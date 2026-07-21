@@ -1,0 +1,9 @@
+/.DS_Store
+/temp_captures/
+/labeled_images/
+/temp_tests/
+/__pycache__/
+*.png
+*.jpeg
+*.log
+*.env
