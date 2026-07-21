@@ -17,7 +17,12 @@ El servidor expone a la IA el control directo de su monitor mapeado en tres API 
 * **Descripción:** Ejecuta el framework de visión nativo de Apple Silicon Mac (`VNRecognizeTextRequest`) sobre la imagen sin salir de la memoria local, retornando la transcripción completa del monitor en milisegundos.
 * **Retorno:** Un JSON ordenado con cada bloque de texto detectado, y sus coordenadas relativas de píxel.
 
-### 3. `inject_rdp_click`
+### 3. `detect_rdp_buttons`
+* **Parámetros:** `image_base64` (string).
+* **Descripción:** Ejecuta YOLOv8 sobre la GPU Metal (MPS) de Apple Silicon para detectar botones, iconos y elementos interactivos en la ventana RDP. Retorna bounding boxes etiquetados con niveles de confianza para el pipeline de Set-of-Mark (SoM). Inferencia GPU-acelerada en ~0.15s.
+* **Retorno:** Un JSON con información del dispositivo, tiempos de carga e inferencia, y un array ordenado de elementos detectados con coordenadas de bounding box.
+
+### 4. `inject_rdp_click`
 * **Parámetros:** `x_percent` (float), `y_percent` (float).
 * **Descripción:** Trae la app de Microsoft Remote Desktop a primer plano mediante un script nativo de AppleScript (`osascript`) y simula un clic físico de mouse del sistema empleando PyAutoGUI en base a los porcentajes lógicos seleccionados por el robot.
 

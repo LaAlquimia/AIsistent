@@ -4,7 +4,9 @@ import json
 import time
 import base64
 import subprocess
+import torch
 from PIL import Image
+from io import BytesIO
 from mcp.server.fastmcp import FastMCP
 
 # Añadir OmniParser al path de ejecución local
@@ -18,6 +20,26 @@ try:
     HAS_APPLE_OCR = True
 except ImportError:
     HAS_APPLE_OCR = False
+
+# Detección de hardware Apple Silicon (MPS GPU)
+try:
+    from util.utils import get_device
+    HAS_DEVICE_UTIL = True
+except ImportError:
+    HAS_DEVICE_UTIL = False
+    def get_device():
+        if torch.cuda.is_available():
+            return 'cuda'
+        elif torch.backends.mps.is_available():
+            return 'mps'
+        else:
+            return 'cpu'
+
+# Ruta a los pesos de YOLO para detección de botones
+YOLO_WEIGHT_PATH = os.path.join(
+    CURRENT_DIR, "..", "self-operating-computer",
+    "operate", "models", "weights", "best.pt"
+)
 
 # Inicializar FastMCP para interactuar nativamente con cualquier cliente MCP (como Hermes)
 mcp = FastMCP("AIsistent")
@@ -101,6 +123,7 @@ def run_apple_ocr(image_base64: str) -> str:
         
     try:
         # Decodificar base64 a imagen en memoria
+        import io
         img_data = base64.b64decode(image_base64)
         image = Image.open(io.BytesIO(img_data))
         
@@ -124,6 +147,61 @@ def run_apple_ocr(image_base64: str) -> str:
         })
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)})
+
+@mcp.tool()
+def detect_rdp_buttons(image_base64: str) -> str:
+    """
+    Ejecuta YOLOv8 sobre la GPU Metal (MPS) de Apple Silicon para detectar botones,
+    iconos y elementos interactivos en la ventana RDP. Retorna bounding boxes con
+    etiquetas numéricas para Set-of-Mark (SoM). GPU-accelerado ~0.15s.
+    """
+    if not os.path.exists(YOLO_WEIGHT_PATH):
+        return json.dumps({
+            "status": "error",
+            "message": f"YOLO weights not found at {YOLO_WEIGHT_PATH}"
+        })
+
+    try:
+        from ultralytics import YOLO
+
+        img_data = base64.b64decode(image_base64)
+        image = Image.open(BytesIO(img_data))
+
+        device = get_device()
+
+        start_load = time.time()
+        yolo_model = YOLO(YOLO_WEIGHT_PATH).to(device)
+        load_duration = time.time() - start_load
+
+        start_infer = time.time()
+        results = yolo_model(image, imgsz=640, verbose=False)
+        infer_duration = time.time() - start_infer
+
+        detections = []
+        for r in results:
+            boxes = r.boxes
+            if boxes is not None:
+                for box in boxes:
+                    x1, y1, x2, y2 = box.xyxy[0].tolist()
+                    conf = float(box.conf[0])
+                    cls = int(box.cls[0])
+                    detections.append({
+                        "bbox": [x1, y1, x2, y2],
+                        "confidence": round(conf, 4),
+                        "class_id": cls
+                    })
+
+        return json.dumps({
+            "status": "success",
+            "device": device,
+            "load_duration_seconds": f"{load_duration:.4f}",
+            "inference_duration_seconds": f"{infer_duration:.4f}",
+            "elements_detected": len(detections),
+            "detections": detections
+        })
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
 
 @mcp.tool()
 def inject_rdp_click(x_percent: float, y_percent: float) -> str:

@@ -17,7 +17,12 @@ The MCP server exposes three unified API methods to the AI agent:
 * **Description:** Feeds the captured image buffer directly into Apple's neural OCR engine (`VNRecognizeTextRequest`) in local memory.
 * **Returns:** An ordered JSON array of every text phrase detected along with its pixel bounding box coord representation.
 
-### 3. `inject_rdp_click`
+### 3. `detect_rdp_buttons`
+* **Parameters:** `image_base64` (string).
+* **Description:** Runs YOLOv8 on the Apple Silicon GPU (Metal/MPS) to detect buttons, icons, and interactive UI elements within the RDP window. Returns labeled bounding boxes with confidence scores for Set-of-Mark (SoM) processing. GPU-accelerated inference completes in ~0.15s.
+* **Returns:** A JSON object with device info, load/inference timing, and an ordered array of detected elements with bounding box coordinates.
+
+### 4. `inject_rdp_click`
 * **Parameters:** `x_percent` (float), `y_percent` (float).
 * **Description:** Programmatically activates and brings the Microsoft Remote Desktop application window to the foreground via AppleScript (`osascript`) and simulates a physical OS mouse click at the calculated absolute coordinate.
 
