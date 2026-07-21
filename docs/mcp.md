@@ -1,38 +1,85 @@
-# AIsistent - MCP Server
+# AIsistent — Servidor MCP
 
-AIsistent es un MCP Server diseñado para interactuar de manera fluida y ultra veloz con cualquier cliente compatible con el protocolo MCP (como **Hermes Agent**), facilitando la automatización no intrusiva de escritorios remotos vía RDP.
+AIsistent es un servidor MCP multiplataforma para automatización RDP no intrusiva. Se conecta con cualquier cliente MCP (Hermes Agent, etc.).
 
 ---
 
-## 🛠️ Herramientas Expuestas (Tools)
-
-El servidor expone a la IA el control directo de su monitor mapeado en tres API unificadas:
+## Herramientas
 
 ### 1. `capture_rdp_screen`
-* **Descripción:** Identifica la ventana de **Microsoft Remote Desktop** en macOS de forma silenciosa, y captura únicamente ese sector físico de píxeles empleando la utilidad integrada `screencapture -l` de Apple.
-* **Retorno:** Un JSON que contiene la duración detallada de la captura, el ID de la ventana capturada, y el dump de la imagen codificada en formato Base64.
+
+Captura la ventana RDP o pantalla completa según la plataforma:
+
+| Plataforma | Método |
+|------------|--------|
+| macOS | `screencapture -l <WindowID>` (solo ventana RDP, ~ms) |
+| Windows | `mss` monitor principal |
+| Linux | `mss` monitor principal |
+
+**Retorno:** `{ status, duration_seconds, platform, image_base64 }`
 
 ### 2. `run_apple_ocr`
-* **Parámetros:** `image_base64` (string).
-* **Descripción:** Ejecuta el framework de visión nativo de Apple Silicon Mac (`VNRecognizeTextRequest`) sobre la imagen sin salir de la memoria local, retornando la transcripción completa del monitor en milisegundos.
-* **Retorno:** Un JSON ordenado con cada bloque de texto detectado, y sus coordenadas relativas de píxel.
+
+* **Parámetros:** `image_base64` (string)
+* **Descripción:** OCR con selección automática de backend:
+
+| Plataforma | Motor | Velocidad |
+|------------|-------|-----------|
+| macOS | Apple Vision (VNRecognizeTextRequest) | ~0.05s |
+| Windows/Linux (CPU) | EasyOCR | ~2s |
+| Windows (NVIDIA CUDA) | EasyOCR (GPU) | ~0.3s |
+
+**Retorno:** `{ status, duration_seconds, elements_detected, ocr_results: [{ text, bbox }] }`
 
 ### 3. `detect_rdp_buttons`
-* **Parámetros:** `image_base64` (string).
-* **Descripción:** Ejecuta YOLOv8 sobre la GPU Metal (MPS) de Apple Silicon para detectar botones, iconos y elementos interactivos en la ventana RDP. Retorna bounding boxes etiquetados con niveles de confianza para el pipeline de Set-of-Mark (SoM). Inferencia GPU-acelerada en ~0.15s.
-* **Retorno:** Un JSON con información del dispositivo, tiempos de carga e inferencia, y un array ordenado de elementos detectados con coordenadas de bounding box.
+
+* **Parámetros:** `image_base64` (string)
+* **Descripción:** YOLOv8 con selección automática de GPU:
+
+| GPU | Backend | Velocidad |
+|-----|--------|-----------|
+| NVIDIA | CUDA | ~0.10s |
+| Apple Silicon | MPS | ~0.15s |
+| CPU | CPU | ~0.8s |
+
+**Retorno:** `{ status, device, inference_duration_seconds, elements_detected, detections: [{ bbox, confidence, class_id }] }`
 
 ### 4. `inject_rdp_click`
-* **Parámetros:** `x_percent` (float), `y_percent` (float).
-* **Descripción:** Trae la app de Microsoft Remote Desktop a primer plano mediante un script nativo de AppleScript (`osascript`) y simula un clic físico de mouse del sistema empleando PyAutoGUI en base a los porcentajes lógicos seleccionados por el robot.
+
+* **Parámetros:** `x_percent` (float), `y_percent` (float)
+* **Descripción:** Simula un clic en coordenadas porcentuales vía pyautogui. Multiplataforma.
+* **Retorno:** `{ status, action }`
 
 ---
 
-## 🔒 Ejecución Local en Hermes Agent
-
-Para levantar el servidor MCP y registrarlo dentro de tu entorno de Hermes, configura el módulo en tu archivo de herramientas con el comando:
+## Ejecución
 
 ```bash
-python AIsistent/mcp_server.py
+# macOS (Apple Silicon)
+pip install aistent[apple]
+
+# Windows / Linux (CPU)
+pip install aistent[cpu]
+
+# Windows (NVIDIA CUDA)
+pip install aistent[cuda]
+
+aisistent
 ```
-El agente Hermes auto-detectará los schemas JSON expuestos por FastMCP y te habilitará de inmediato estas herramientas especializadas dentro de la terminal de tu MacBook M5.
+
+## Configuración en Hermes Agent
+
+```yaml
+mcpServers:
+  AIsistent:
+    command: "aisistent"
+```
+
+O desde el código fuente:
+
+```yaml
+mcpServers:
+  AIsistent:
+    command: "uv"
+    args: ["run", "--directory", "/ruta/a/AIsistent", "aisistent"]
+```

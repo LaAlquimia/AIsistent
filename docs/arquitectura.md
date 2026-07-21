@@ -1,82 +1,106 @@
-# AIsistent - Infraestructura MCP para Automatización RDP No Intrusiva
+# AIsistent — Infraestructura MCP para Automatización RDP No Intrusiva
 
-Este repositorio contiene la arquitectura de **AIsistent**, una secretaria de IA de nivel de producción optimizada para ejecutarse localmente en un **MacBook M5 (Apple Silicon)**.
+Arquitectura de **AIsistent**, infraestructura de RPA multiplataforma optimizada para **Apple Silicon**, **NVIDIA CUDA** y **CPU**.
 
-El objetivo principal de esta infraestructura es automatizar flujos de trabajo sobre un **PC Windows remoto conectado vía RDP**, al cual **no podemos modificarle el sistema, ni instalarle dependencias, ni violar sus políticas de seguridad corporativas**.
+El objetivo es automatizar flujos de trabajo sobre un **PC Windows remoto conectado vía RDP**, sin modificar el sistema remoto ni instalar dependencias en él.
 
 ---
 
-## 🛠️ Arquitectura Técnica
-
-El sistema se ejecuta como un **MCP Server** (Model Context Protocol) 100% Client-Side en macOS, orquestando las siguientes capas:
+## Arquitectura Técnica
 
 ```
                   ┌──────────────────────────────────────────┐
-                  │          MacBook M5 (Host Local)         │
+                  │       Host Local (Mac/Windows/Linux)      │
                   └────────────────────┬─────────────────────┘
                                        │
                      ┌─────────────────┴─────────────────┐
                      ▼                                   ▼
-          Toma de Pantalla Optimizada           Inyección de Acciones
-        screencapture -l (WindowID RDP)        pyautogui simula mouse/teclado
+          Captura de Pantalla                   Inyección de Acciones
+     macOS: screencapture -l (WindowID)        pyautogui (multiplataforma)
+     Win/Lin: MSS                               clics y teclado
                      │                                   ▲
                      ▼                                   │
-         Apple Vision OCR (0.05s)                        │
+          OCR (selección automática)                    │
+     macOS: Apple Vision (~0.05s)                       │
+     CPU:   EasyOCR (~2s)                               │
+     CUDA:  EasyOCR GPU (~0.3s)                         │
                      │                                   │
                      ▼                                   │
-        YOLOv8 Button Detect (MPS GPU)                   │
+          YOLOv8 (detección de botones)                  │
+     NVIDIA CUDA (~0.10s)                                │
+     Apple MPS   (~0.15s)                                │
+     CPU         (~0.8s)                                 │
                      │                                   │
                      ▼                                   │
           Lienzo Marcado (SoM)                           │
                      │                                   │
                      ▼                                   │
           ┌─────────────────────┐                        │
-          │  Hermes Agent (ML)  ├────────────────────────┘
+          │    Agente IA (ML)   ├────────────────────────┘
           └─────────────────────┘
 ```
 
-### 1. Captura de Pantalla Focalizada
-En lugar de capturar la pantalla Retina 4K completa del Mac, la infraestructura busca activamente el `WindowID` de la ventana del cliente RDP (como *Microsoft Remote Desktop*) mediante la API de macOS `Quartz` y ejecuta:
-```bash
-screencapture -l <WindowID> screenshot.png
-```
-Esto genera una captura pre-recortada del escritorio de Windows en milisegundos, reduciendo el tamaño del archivo y el tiempo de inferencia visual de forma drástica.
+### 1. Captura de Pantalla
 
-### 2. Procesamiento local optimizado (M5-GPU)
-* **OCR de Alta Velocidad:** Utiliza el framework de reconocimiento de texto nativo de Apple (`VNRecognizeTextRequest`) a través de PyObjC, procesando el texto de la captura en **~0.05s** (frente a los ~7s de EasyOCR clásico).
-* **Segmentación de Botones (SoM):** Ejecuta YOLOv8 mapeado en hardware MPS utilizando representaciones float16 para aislar botones interactivos en **~0.15s**.
-* **Generación del SOM:** Dibuja indicadores visuales (`[1]`, `[2]`, `[3]`) directamente en local en el Mac.
+| Plataforma | Método |
+|------------|--------|
+| macOS | Busca el WindowID de Microsoft Remote Desktop vía Quartz y ejecuta `screencapture -l <WindowID>` |
+| Windows | Captura el monitor principal con la librería `mss` |
+| Linux | Captura el monitor principal con la librería `mss` |
 
-### 3. Modelo de Decisión (Cerebro)
-El resultado del S.O.M. y el JSON extraído se envía a modelos en la nube de alta capacidad cognitiva (como Google Gemini o DeepSeek R1). El modelo analiza la pantalla numerada y se limita a devolver el número de etiqueta en formato JSON:
+### 2. OCR Acelerado por Hardware
+
+Selección automática del backend según la plataforma:
+
+- **macOS:** Apple Vision (`VNRecognizeTextRequest`) vía PyObjC en la Neural Engine — **~0.05s**
+- **CPU (Windows/Linux):** EasyOCR — **~2s**
+- **CUDA (NVIDIA):** EasyOCR con GPU — **~0.3s**
+
+### 3. Detección de Botones (SoM)
+
+YOLOv8 mapeado al mejor backend disponible:
+
+- **NVIDIA CUDA:** ~0.10s
+- **Apple Silicon MPS:** ~0.15s
+- **CPU:** ~0.8s
+
+Genera indicadores visuales (`[1]`, `[2]`, `[3]`) sobre la imagen.
+
+### 4. Modelo de Decisión (Cerebro)
+
+El S.O.M. y el JSON extraído se envían a modelos en la nube (Gemini, DeepSeek, etc.). El modelo responde con JSON indicando la etiqueta a clickear:
+
 ```json
 {
-  "thought": "Hago clic en el botón de Gmail que tiene la etiqueta 14",
+  "thought": "Hago clic en el botón de Gmail etiqueta 14",
   "operation": "click",
   "label": "14"
 }
 ```
 
-### 4. Ejecución "Client-Side"
-Tu Mac recibe la etiqueta, mapea las coordenadas locales exactas guardadas en caché, simula el clic físico del mouse de macOS sobre la ventana RDP utilizando `pyautogui/Quartz` y el protocolo RDP se encarga de transmitir el impulso a la máquina corporativa de forma nativa e invisible.
+### 5. Ejecución Client-Side
+
+El host local recibe la etiqueta, mapea las coordenadas desde la caché y simula el clic vía `pyautogui`. El protocolo RDP transmite la acción a Windows de forma nativa e invisible.
 
 ---
 
-## 🚀 Requisitos de Instalación en la Mac
+## Instalación
 
-Para configurar el entorno asíncrono optimizado en un MacBook de Apple Silicon:
+```bash
+pip install aistent[apple]   # macOS
+pip install aistent[cpu]     # Windows/Linux CPU
+pip install aistent[cuda]    # Windows NVIDIA
+pip install aistent[all]     # todo
+```
 
-1. **Instalar dependencias de interfaz del Mac:**
-   ```bash
-   pip install pyobjc-framework-Vision pyobjc-framework-Quartz pyobjc-framework-Cocoa
-   pip install pyautogui ultralytics
-   ```
-
-2. **Garantizar permisos en el Mac:**
-   Otorga permisos de **Grabación de Pantalla** y **Accesibilidad** a tu Terminal o IDE en las Preferencias del Sistema del Mac para asegurar la inyección nativa de mouse.
+**Permisos macOS:** Otorga **Grabación de Pantalla** y **Accesibilidad** a tu Terminal en Preferencias del Sistema.
 
 ---
 
-## 📌 Configuración con Hermes Agent
+## Configuración con Hermes Agent
 
-Este repositorio se expone como un servidor MCP. Para agregarlo a tu entorno de Hermes Agent, simplemente se configura el punto de entrada MCP (`mcp_server.py`) que automatiza los flujos de clics de forma nativa.
+```yaml
+mcpServers:
+  AIsistent:
+    command: "aisistent"
+```
