@@ -1,8 +1,8 @@
-# AIsistent - Non-Intrusive RDP Automation MCP Infrastructure
+# AIsistent — Non-Intrusive RDP Automation MCP Infrastructure
 
-This repository contains the architecture diagram and technical core of **AIsistent**, a production-grade AI assistant infrastructure optimized to run natively on **Apple Silicon Macs (M1-M5)**.
+This repository contains the architecture diagram and technical core of **AIsistent**, a production-grade AI assistant infrastructure optimized for **cross-platform deployment** (macOS Apple Silicon, Windows CUDA, Linux CPU).
 
-The primary goal of this framework is to automate complex workflows on a **remote Windows PC connected via RDP** where **we cannot modify the system, install external packages, or violate corporate security policies**.
+The primary goal is to automate complex workflows on a **remote Windows PC connected via RDP** where **we cannot modify the system, install external packages, or violate corporate security policies**.
 
 ---
 

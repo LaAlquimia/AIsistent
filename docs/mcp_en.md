@@ -1,42 +1,65 @@
-# AIsistent - MCP Server Documentation (US-En)
+# AIsistent — MCP Server Documentation
 
-AIsistent implements the open-standard **Model Context Protocol (MCP)**, allowing any compatible client (such as **Hermes Agent** or any desktop-based LLM orchestration layer) to consume high-speed, non-intrusive automation routines.
+AIsistent implements the **Model Context Protocol (MCP)**, allowing any compatible client (Hermes Agent, etc.) to consume cross-platform, non-intrusive RDP automation routines.
 
 ---
 
-## 🛠️ Exposed Server Tools
-
-The MCP server exposes three unified API methods to the AI agent:
+## Tools
 
 ### 1. `capture_rdp_screen`
-* **Description:** Silently indexes active windows on macOS to find **Microsoft Remote Desktop**, capturing only that specific screen boundary via the native `screencapture -l` system utility.
-* **Returns:** A JSON metadata wrapper containing execution duration, target window status, and a base64-encoded image string.
+* **Description:** Captures the RDP window or full screen depending on platform:
+
+  | Platform | Method |
+  |----------|--------|
+  | macOS | `screencapture -l <WindowID>` (RDP window only, ~ms) |
+  | Windows | `mss` primary monitor |
+  | Linux | `mss` primary monitor |
+
+* **Returns:** `{ status, duration_seconds, platform, image_base64 }`
 
 ### 2. `run_apple_ocr`
-* **Parameters:** `image_base64` (string).
-* **Description:** Feeds the captured image buffer directly into Apple's neural OCR engine (`VNRecognizeTextRequest`) in local memory.
-* **Returns:** An ordered JSON array of every text phrase detected along with its pixel bounding box coord representation.
+* **Parameters:** `image_base64` (string)
+* **Description:** OCR with automatic backend selection:
+
+  | Platform | Backend | Speed |
+  |----------|--------|-------|
+  | macOS | Apple Vision (VNRecognizeTextRequest) | ~0.05s |
+  | Windows/Linux (CPU) | EasyOCR | ~2s |
+  | Windows (NVIDIA CUDA) | EasyOCR (GPU) | ~0.3s |
+
+* **Returns:** `{ status, duration_seconds, elements_detected, ocr_results: [{ text, bbox }] }`
 
 ### 3. `detect_rdp_buttons`
-* **Parameters:** `image_base64` (string).
-* **Description:** Runs YOLOv8 on the Apple Silicon GPU (Metal/MPS) to detect buttons, icons, and interactive UI elements within the RDP window. Returns labeled bounding boxes with confidence scores for Set-of-Mark (SoM) processing. GPU-accelerated inference completes in ~0.15s.
-* **Returns:** A JSON object with device info, load/inference timing, and an ordered array of detected elements with bounding box coordinates.
+* **Parameters:** `image_base64` (string)
+* **Description:** YOLOv8 UI element detection with auto GPU selection:
+
+  | GPU | Backend | Speed |
+  |-----|--------|-------|
+  | NVIDIA | CUDA | ~0.10s |
+  | Apple Silicon | MPS | ~0.15s |
+  | CPU | CPU | ~0.8s |
+
+* **Returns:** `{ status, device, inference_duration_seconds, elements_detected, detections: [{ bbox, confidence, class_id }] }`
 
 ### 4. `inject_rdp_click`
-* **Parameters:** `x_percent` (float), `y_percent` (float).
-* **Description:** Programmatically activates and brings the Microsoft Remote Desktop application window to the foreground via AppleScript (`osascript`) and simulates a physical OS mouse click at the calculated absolute coordinate.
+* **Parameters:** `x_percent` (float), `y_percent` (float)
+* **Description:** Simulates a mouse click at percentage-based screen coordinates via pyautogui. Cross-platform.
+* **Returns:** `{ status, action }`
 
 ---
 
-## 🔒 Configuration in Hermes Agent
-
-To connect this local MCP Toolset within your Hermes ecosystem, configure the server in your active tools config mapping:
+## Configuration in Hermes Agent
 
 ```yaml
 mcpServers:
   AIsistent:
-    command: "python"
-    args: ["/Users/laalquimia/Desktop/AIsistent/mcp_server.py"]
+    command: "aisistent"
 ```
 
-Once defined, the Hermes environment will automatically query the service, surface the JSON schema capabilities, and grant your active assistant raw, real-time control to drive complex Windows environments dynamically.
+Or from source:
+
+```yaml
+mcpServers:
+  AIsistent:
+    command: "uv"
+    args: ["run", "--directory", "/path/to/AIsistent", "aisistent"]
