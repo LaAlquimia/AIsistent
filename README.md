@@ -99,6 +99,30 @@ Or via MCP tool call:
 benchmark(image_base64: "")              # empty = real screenshot, or pass base64
 ```
 
+### Real-world performance (Apple MacBook M5 — MPS GPU)
+
+Benchmark on a real 1920×1080 desktop screenshot with text, buttons, and UI elements:
+
+```
+Platform : macOS (Apple Silicon M5)
+Device   : MPS
+──────────────────────────────────────
+Capture  :  0.22s
+OCR      :  0.43s  —  102 texts detected
+YOLO     :  0.76s  —   59 buttons detected
+──────────────────────────────────────
+Total    : ~1.4s
+```
+
+| Step | Time | Throughput |
+|------|------|-----------|
+| Screen capture | ~0.22s | — |
+| Apple Vision OCR (Neural Engine) | ~0.43s | ~237 texts/sec |
+| YOLOv8 inference (MPS float16) | ~0.76s | ~78 detections/sec |
+| **End-to-end** | **~1.4s** | — |
+
+These numbers are from the same machine running both the MCP server and the benchmark — no overhead from network or RDP. On **NVIDIA CUDA**, YOLO inference is typically **0.3–0.5s** (RTX 3060+).
+
 ---
 
 ## MCP Client Integration
@@ -428,6 +452,15 @@ aisistent-bench                          # pantallazo real
 aisistent-bench --synthetic              # imagen sintética
 aisistent-bench --image captura.png      # imagen propia
 ```
+
+#### Resultados reales (MacBook M5 — MPS)
+
+| Paso | Tiempo | Elementos |
+|------|--------|-----------|
+| Captura | ~0.22s | — |
+| OCR (Apple Vision) | ~0.43s | 102 textos |
+| YOLO (MPS float16) | ~0.76s | 59 botones |
+| **Total** | **~1.4s** | — |
 
 ### Integración con MCP Clients
 
