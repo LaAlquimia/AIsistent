@@ -9,3 +9,4 @@ screenshots/
 *.pt
 *.safetensors
 .DS_Store
+_benchmark_screenshot.png

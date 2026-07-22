@@ -34,11 +34,25 @@ class Settings:
         self.omniparser_path = omni if omni.is_dir() else None
         self.soc_path = soc if soc.is_dir() else None
 
+        # RDP settings (for headless transport)
+        self.rdp_host: str | None = None
+        self.rdp_user: str | None = None
+        self.rdp_pass: str | None = None
+        self.rdp_domain: str | None = None
+
         # Override from env
         if env := os.getenv("AISISTENT_YOLO_WEIGHTS"):
             self.yolo_weights = Path(env)
         if env := os.getenv("AISISTENT_TEMP_DIR"):
             self.temp_dir = Path(env)
+        if env := os.getenv("RDP_HOST"):
+            self.rdp_host = env
+        if env := os.getenv("RDP_USER"):
+            self.rdp_user = env
+        if env := os.getenv("RDP_PASS"):
+            self.rdp_pass = env
+        if env := os.getenv("RDP_DOMAIN"):
+            self.rdp_domain = env
 
 
 settings = Settings()

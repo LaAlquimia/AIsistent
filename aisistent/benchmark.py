@@ -109,6 +109,9 @@ def main():
         import base64
         _, b64 = capture_screen()
         image_bytes = base64.b64decode(b64)
+        out = Path("_benchmark_screenshot.png")
+        out.write_bytes(image_bytes)
+        log.info(f"  Saved to : {out.resolve()}")
     else:
         log.info("  Image    : synthetic (1920x1080)")
         image_bytes = create_test_image()

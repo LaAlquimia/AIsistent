@@ -2,12 +2,12 @@
 
 MCP server for non-intrusive RDP automation. OCR, YOLO button detection, and click injection — zero footprint on the remote machine.
 
-| | macOS | Windows | Linux |
-|---|---|---|---|
-| **Capture** | RDP WindowID | MSS fullscreen | MSS fullscreen |
-| **OCR** | Apple Vision (~0.05s) | EasyOCR (CPU/CUDA) | EasyOCR (CPU/CUDA) |
-| **Detection** | YOLO MPS GPU | YOLO CUDA GPU | YOLO CPU |
-| **Click** | pyautogui | pyautogui | pyautogui |
+| | GUI mode (default) | RDP headless mode |
+|---|---|---|
+| **Capture** | macOS RDP window / MSS fullscreen | Direct RDP framebuffer (simple-rdp) |
+| **OCR** | Apple Vision / EasyOCR | Apple Vision / EasyOCR |
+| **Detection** | YOLO (CUDA / MPS / CPU) | YOLO (CUDA / MPS / CPU) |
+| **Click** | pyautogui | RDP protocol input channel |
 
 ---
 
@@ -23,19 +23,14 @@ pip install aistent[cpu]
 # Windows (NVIDIA CUDA)
 pip install aistent[cuda]
 
+# RDP headless (any OS)
+pip install aistent[rdp]
+
 # Everything
 pip install aistent[all]
 
-aisistent
-```
-
-### From source
-
-```bash
-git clone https://github.com/LaAlquimia/AIsistent
-cd AIsistent
-pip install -e ".[all]"
-aisistent
+aisistent                          # GUI mode (default)
+aisistent --mode rdp --host HOST   # RDP headless mode
 ```
 
 ---
@@ -44,7 +39,9 @@ aisistent
 
 | Tool | Description |
 |------|-------------|
-| `capture_rdp_screen` | Capture RDP window (macOS) or full screen (Win/Linux) |
+| `connect_rdp` | Open a headless RDP connection (switches transport to RDP mode) |
+| `disconnect_rdp` | Close the RDP connection and switch back to GUI mode |
+| `capture_rdp_screen` | Capture screen via active transport (GUI or RDP) |
 | `run_apple_ocr` | OCR: Apple Vision (Mac) or EasyOCR (CPU/CUDA) |
 | `detect_rdp_buttons` | YOLOv8 button detection on CUDA / MPS / CPU |
 | `inject_rdp_click` | Click injection at percentage-based coordinates |
@@ -56,6 +53,10 @@ aisistent
 |---------|---------|-------------|
 | `AISISTENT_YOLO_WEIGHTS` | `models/weights/best.pt` | Path to YOLO weights file |
 | `AISISTENT_TEMP_DIR` | `temp_captures/` | Screenshot temp directory |
+| `RDP_HOST` | — | RDP server hostname/IP (for headless mode) |
+| `RDP_USER` | — | RDP username |
+| `RDP_PASS` | — | RDP password |
+| `RDP_DOMAIN` | — | RDP domain (optional) |
 
 ---
 
@@ -367,6 +368,57 @@ Then configure:
 
 ---
 
+## Headless RDP Transport
+
+AIsistent supports two transport modes that can be switched at runtime:
+
+| Feature | GUI mode (default) | RDP headless mode |
+|---------|-------------------|-------------------|
+| Local window needed | Yes (Microsoft Remote Desktop) | No |
+| Capture method | `screencapture` / MSS | Direct RDP framebuffer via `simple-rdp` |
+| Click method | `pyautogui` (local screen) | RDP input channel |
+| macOS support | Full | Full (no XQuartz needed) |
+| Linux support | MSS fullscreen | Full |
+| Windows support | MSS fullscreen | Full |
+
+### CLI mode
+
+```bash
+# GUI mode (default)
+aisistent
+
+# RDP headless with inline credentials
+aisistent --mode rdp --host 192.168.1.100 --user admin --password secret
+
+# RDP headless with environment variables
+export RDP_HOST=192.168.1.100
+export RDP_USER=admin
+export RDP_PASS=secret
+aisistent --mode rdp
+```
+
+### MCP tools (switch at runtime)
+
+```python
+connect_rdp(host="192.168.1.100", username="admin", password="secret")
+capture_rdp_screen()     # → remote framebuffer, no local window
+inject_rdp_click(50, 50) # → click sent via RDP protocol
+disconnect_rdp()         # → back to GUI mode
+```
+
+### Credentials precedence
+
+Arguments > Environment variables (`RDP_HOST`, `RDP_USER`, `RDP_PASS`) > Config file
+
+### Install
+
+```bash
+pip install aistent[rdp]    # headless RDP only
+pip install aistent[all]    # everything including RDP
+```
+
+---
+
 ## winremote-mcp Integration
 
 AIsistent works alongside [winremote-mcp](https://github.com/dddabtc/winremote-mcp)
@@ -397,15 +449,20 @@ handles system operations (registry, services, processes, files, etc.).
 AIsistent/
 ├── aisistent/
 │   ├── __init__.py      # Version
-│   ├── __main__.py      # Entry point
+│   ├── __main__.py      # Entry point (argparse: --mode gui|rdp)
 │   ├── server.py        # MCP server + tools
 │   ├── platform.py      # OS + device detection
 │   ├── config.py        # Settings management
-│   ├── capture.py       # Screen capture (RDP / MSS)
+│   ├── capture.py       # Screen capture (delegates to transport)
 │   ├── ocr.py           # OCR (Apple Vision / EasyOCR)
 │   ├── detection.py     # YOLOv8 button detection
-│   ├── action.py        # Click injection
-│   └── benchmark.py     # Performance benchmark
+│   ├── action.py        # Click injection (delegates to transport)
+│   ├── benchmark.py     # Performance benchmark
+│   └── transport/       # Pluggable transport layer
+│       ├── __init__.py  # get/set transport singleton
+│       ├── base.py      # Abstract Transport class
+│       ├── gui.py       # GUI transport (screencapture + pyautogui)
+│       └── rdp.py       # RDP headless transport (simple-rdp)
 ├── docs/                # Documentation
 ├── pyproject.toml
 └── README.md
@@ -423,12 +480,12 @@ MIT
 
 Servidor MCP para automatización RDP no intrusiva. OCR, detección de botones con YOLOv8 e inyección de clics — sin instalar nada en la máquina remota.
 
-| | macOS | Windows | Linux |
-|---|---|---|---|
-| **Captura** | RDP WindowID | MSS pantalla completa | MSS pantalla completa |
-| **OCR** | Apple Vision (~0.05s) | EasyOCR (CPU/CUDA) | EasyOCR (CPU/CUDA) |
-| **Detección** | YOLO GPU MPS | YOLO GPU CUDA | YOLO CPU |
-| **Click** | pyautogui | pyautogui | pyautogui |
+| | Modo GUI (default) | Modo RDP headless |
+|---|---|---|
+| **Captura** | Ventana RDP macOS / MSS pantalla completa | Framebuffer RDP directo (simple-rdp) |
+| **OCR** | Apple Vision / EasyOCR | Apple Vision / EasyOCR |
+| **Detección** | YOLO (CUDA / MPS / CPU) | YOLO (CUDA / MPS / CPU) |
+| **Click** | pyautogui | Canal de input RDP |
 
 ### Inicio Rápido
 
@@ -442,7 +499,11 @@ pip install aistent[cpu]
 # Windows (NVIDIA CUDA)
 pip install aistent[cuda]
 
-aisistent
+# RDP headless
+pip install aistent[rdp]
+
+aisistent                          # modo GUI
+aisistent --mode rdp --host HOST   # modo RDP headless
 ```
 
 ### Benchmark
@@ -461,6 +522,15 @@ aisistent-bench --image captura.png      # imagen propia
 | OCR (Apple Vision) | ~0.43s | 102 textos |
 | YOLO (MPS float16) | ~0.76s | 59 botones |
 | **Total** | **~1.4s** | — |
+
+### Transporte RDP headless
+
+```bash
+aisistent --mode rdp --host 192.168.1.100 --user admin --password pass
+# O vía tool MCP:
+# connect_rdp(host="...", username="...", password="...")
+# disconnect_rdp()
+```
 
 ### Integración con MCP Clients
 
