@@ -99,11 +99,38 @@ benchmark(image_base64: "")              # returns JSON with durations
 
 ---
 
-## Hermes MCP Integration
+## MCP Client Integration
 
-[AIsistent] can be used directly as an MCP server from any MCP client.
-If you use **Hermes MCP** (or any `fastmcp`-compatible orchestrator),
-add the following to your MCP config:
+AIsistent implements the standard MCP (Model Context Protocol), so it works with any MCP client. Below are detailed setup instructions for each platform.
+
+---
+
+### Hermes MCP
+
+[Hermes](https://github.com/NickM980/hermes) is an AI agent that uses MCP tools to interact with your computer.
+
+#### 1. Install AIsistent
+
+```bash
+# macOS (Apple Silicon — Apple Vision OCR + MPS GPU)
+pip install aistent[apple]
+
+# Windows/Linux CPU
+pip install aistent[cpu]
+
+# Windows with NVIDIA GPU
+pip install aistent[cuda]
+```
+
+#### 2. Locate Hermes config file
+
+| OS | Path |
+|----|------|
+| macOS | `~/.config/hermes/config.json` |
+| Windows | `%APPDATA%\hermes\config.json` |
+| Linux | `~/.config/hermes/config.json` |
+
+#### 3. Add AIsistent to Hermes config
 
 ```json
 {
@@ -116,21 +143,201 @@ add the following to your MCP config:
 }
 ```
 
-Then Hermes can call:
+If AIsistent is not on your PATH, use the full path:
 
-- `capture_rdp_screen` — to get the current screen state
-- `run_apple_ocr` — to extract text from the screen
-- `detect_rdp_buttons` — to find clickable UI elements
-- `inject_rdp_click` — to click at percentage coordinates
-- `benchmark` — to measure performance
+```json
+{
+  "mcpServers": {
+    "aisistent": {
+      "command": "/path/to/venv/bin/aisistent",
+      "type": "stdio"
+    }
+  }
+}
+```
 
-### Example Hermes workflow
+#### 4. Start Hermes
 
-1. Hermes calls `capture_rdp_screen` → gets screenshot base64
-2. Hermes calls `run_apple_ocr(image_base64)` → gets text/bboxes
-3. Hermes calls `detect_rdp_buttons(image_base64)` → gets button coordinates
-4. Hermes decides `Click(500, 300)` via LLM
-5. Hermes calls `inject_rdp_click(26.04, 27.78)` (percentage)
+```bash
+hermes
+```
+
+Hermes will auto-discover AIsistent's tools on startup. You should see:
+
+```
+👁️ AIsistent — capture_rdp_screen, run_apple_ocr, detect_rdp_buttons, inject_rdp_click, benchmark
+```
+
+#### Example: Hermes asks AIsistent to read the screen
+
+```
+> What's on my screen right now?
+```
+
+Hermes will:
+1. Call `capture_rdp_screen` → gets screenshot
+2. Call `run_apple_ocr(image)` → extracts all text
+3. Call `detect_rdp_buttons(image)` → finds buttons
+4. Returns a structured summary of what's on screen
+
+#### Example: Hermes clicks a button via AIsistent
+
+```
+> Open Chrome and go to youtube.com
+```
+
+Hermes will:
+1. Call `capture_rdp_screen` → sees desktop
+2. Call `detect_rdp_buttons(image)` → finds Chrome icon coordinates
+3. Call `inject_rdp_click(12.5, 8.3)` → clicks Chrome
+4. Repeats capture → detect → click until done
+
+---
+
+### OpenCode
+
+[OpenCode](https://opencode.ai) is an agentic CLI that also supports MCP tools.
+
+#### 1. Install AIsistent
+
+```bash
+pip install aistent[all]
+```
+
+#### 2. Add to OpenCode config
+
+Create or edit `~/.config/opencode/opencode.jsonc`:
+
+```jsonc
+{
+  "mcpServers": {
+    "aisistent": {
+      "command": "aisistent",
+      "type": "stdio"
+    }
+  }
+}
+```
+
+Or per-project, add to `.opencode.jsonc` in your project root:
+
+```jsonc
+{
+  "mcpServers": {
+    "aisistent": {
+      "command": "aisistent",
+      "type": "stdio"
+    }
+  }
+}
+```
+
+#### 3. Verify it works
+
+```bash
+opencode
+```
+
+Then ask:
+
+```
+capture the screen and tell me what applications are open
+```
+
+OpenCode will call `capture_rdp_screen` → `run_apple_ocr` and return the result.
+
+---
+
+### Claude Desktop
+
+[Claude Desktop](https://claude.ai/download) supports MCP tools via its config file.
+
+#### 1. Locate Claude Desktop config
+
+| OS | Path |
+|----|------|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+
+#### 2. Add AIsistent
+
+```json
+{
+  "mcpServers": {
+    "aisistent": {
+      "command": "aisistent",
+      "type": "stdio"
+    }
+  }
+}
+```
+
+#### 3. Restart Claude Desktop
+
+Claude will show a hammer icon with AIsistent's available tools.
+
+---
+
+### Cursor
+
+[Cursor](https://cursor.com) IDE supports MCP tools.
+
+#### 1. Open Cursor settings
+
+`Settings` → `Features` → `MCP Servers`
+
+#### 2. Add server
+
+```
+Name: AIsistent
+Type: stdio
+Command: aisistent
+```
+
+#### 3. Use in chat
+
+In Cursor's AI chat, type:
+
+```
+@aisistent capture the screen and detect buttons
+```
+
+---
+
+### Any MCP Client (generic stdio)
+
+If your MCP client uses stdio transport, the configuration is always the same pattern:
+
+```json
+{
+  "mcpServers": {
+    "aisistent": {
+      "command": "aisistent",
+      "type": "stdio"
+    }
+  }
+}
+```
+
+For HTTP/SSE transport instead of stdio:
+
+```bash
+# Start AIsistent as an SSE server on port 8100
+python -c "from aisistent.server import mcp; mcp.run(transport='sse', port=8100)"
+```
+
+Then configure:
+
+```json
+{
+  "mcpServers": {
+    "aisistent": {
+      "url": "http://localhost:8100/sse",
+      "type": "sse"
+    }
+  }
+}
+```
 
 ---
 
@@ -218,9 +425,43 @@ aisistent
 aisistent-bench
 ```
 
-### Integración con Hermes MCP
+### Integración con MCP Clients
 
-Añade AIsistent como servidor MCP en tu configuración de Hermes:
+#### Hermes MCP
+
+Añade AIsistent como servidor MCP en `~/.config/hermes/config.json`:
+
+```json
+{
+  "mcpServers": {
+    "aisistent": {
+      "command": "aisistent",
+      "type": "stdio"
+    }
+  }
+}
+```
+
+Luego inicia Hermes: `hermes`
+
+#### OpenCode
+
+Añade en `~/.config/opencode/opencode.jsonc`:
+
+```jsonc
+{
+  "mcpServers": {
+    "aisistent": {
+      "command": "aisistent",
+      "type": "stdio"
+    }
+  }
+}
+```
+
+#### Claude Desktop
+
+Añade en `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
