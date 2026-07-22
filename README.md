@@ -86,15 +86,17 @@ pip install torch torchvision
 Run a quick performance test from the command line:
 
 ```bash
-aisistent-bench                          # full benchmark with synthetic image
-aisistent-bench --skip-ocr               # YOLO only
-aisistent-bench --image screenshot.png   # use your own image
+aisistent-bench                                 # captures a real screenshot & benchmarks
+aisistent-bench --synthetic                     # use synthetic image (no screen capture)
+aisistent-bench --skip-ocr                      # YOLO only
+aisistent-bench --image screenshot.png          # use your own image
+aisistent-bench --device cpu                    # force CPU backend
 ```
 
 Or via MCP tool call:
 
 ```
-benchmark(image_base64: "")              # returns JSON with durations
+benchmark(image_base64: "")              # empty = real screenshot, or pass base64
 ```
 
 ---
@@ -422,7 +424,9 @@ aisistent
 ### Benchmark
 
 ```bash
-aisistent-bench
+aisistent-bench                          # pantallazo real
+aisistent-bench --synthetic              # imagen sintética
+aisistent-bench --image captura.png      # imagen propia
 ```
 
 ### Integración con MCP Clients

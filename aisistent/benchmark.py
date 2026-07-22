@@ -10,6 +10,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from .platform import CURRENT_OS, OSType, CURRENT_DEVICE, DeviceType, detect_device
+from .capture import capture_screen
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("benchmark")
@@ -82,6 +83,7 @@ def main():
     )
     parser.add_argument("--image", type=Path, help="Path to a PNG screenshot")
     parser.add_argument("--skip-ocr", action="store_true", help="Skip OCR test")
+    parser.add_argument("--synthetic", action="store_true", help="Use synthetic image instead of real screenshot")
     parser.add_argument(
         "--device",
         choices=["auto", "cuda", "mps", "cpu"],
@@ -92,7 +94,6 @@ def main():
 
     if args.device != "auto":
         log.info(f"Device override: {args.device}")
-        # Force re-detect if needed — currently platform.CURRENT_DEVICE is set at import
 
     log.info("=" * 57)
     log.info("      AISISTENT — PERFORMANCE BENCHMARK")
@@ -103,6 +104,11 @@ def main():
     if args.image:
         image_bytes = args.image.read_bytes()
         log.info(f"  Image    : {args.image}")
+    elif not args.synthetic:
+        log.info("  Image    : live screenshot")
+        import base64
+        _, b64 = capture_screen()
+        image_bytes = base64.b64decode(b64)
     else:
         log.info("  Image    : synthetic (1920x1080)")
         image_bytes = create_test_image()

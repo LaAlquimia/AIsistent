@@ -34,9 +34,14 @@ def benchmark(image_base64: str = "") -> str:
         image_base64: Optional base64-encoded PNG. If empty, generates a synthetic image.
     """
     try:
-        from .benchmark import run_benchmark, create_test_image
+        from .benchmark import run_benchmark
+        from .capture import capture_screen
 
-        image_bytes = base64.b64decode(image_base64) if image_base64 else create_test_image()
+        if image_base64:
+            image_bytes = base64.b64decode(image_base64)
+        else:
+            _, b64 = capture_screen()
+            image_bytes = base64.b64decode(b64)
         results = run_benchmark(image_bytes)
         return json.dumps(results)
     except Exception as e:
