@@ -27,6 +27,24 @@ def _img_to_b64(image_bytes: bytes) -> str:
 
 
 @mcp.tool()
+def benchmark(image_base64: str = "") -> str:
+    """Run performance benchmark on OCR + YOLO.
+
+    Args:
+        image_base64: Optional base64-encoded PNG. If empty, generates a synthetic image.
+    """
+    try:
+        from .benchmark import run_benchmark, create_test_image
+
+        image_bytes = base64.b64decode(image_base64) if image_base64 else create_test_image()
+        results = run_benchmark(image_bytes)
+        return json.dumps(results)
+    except Exception as e:
+        logger.exception("benchmark failed")
+        return json.dumps({"status": "error", "message": str(e)})
+
+
+@mcp.tool()
 def capture_rdp_screen() -> str:
     """Capture the RDP window (or full screen as fallback).
 

@@ -64,6 +64,7 @@ Repository = "https://github.com/LaAlquimia/AIsistent"
 
 [project.scripts]
 aisistent = "aisistent.__main__:main"
+aisistent-bench = "aisistent.benchmark:main"
 
 [tool.setuptools.packages.find]
 include = ["aisistent*"]
