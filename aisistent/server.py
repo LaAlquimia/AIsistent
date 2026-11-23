@@ -89,13 +89,16 @@ def connect_rdp(
 
 @mcp.tool()
 def disconnect_rdp() -> str:
-    """Disconnect the headless RDP session and switch back to GUI transport."""
+    """Disconnect the headless RDP session.
+
+    Fork note: upstream switched back to the GUI transport here; this fork
+    is RDP-only, so disconnect simply tears the RDP session down.
+    """
     try:
-        from .transport.gui import GUITransport
-        set_transport(GUITransport())
+        get_transport().disconnect()
         return json.dumps({
             "status": "success",
-            "action": "Disconnected RDP transport, switched to GUI mode",
+            "action": "Disconnected RDP transport",
         })
     except Exception as e:
         logger.exception("disconnect_rdp failed")

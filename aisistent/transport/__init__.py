@@ -1,6 +1,5 @@
 import logging
 from .base import Transport
-from .gui import GUITransport
 from .rdp import RDPTransport
 
 logger = logging.getLogger(__name__)
@@ -11,7 +10,7 @@ _transport: Transport | None = None
 def get_transport() -> Transport:
     global _transport
     if _transport is None:
-        _transport = GUITransport()
+        _transport = RDPTransport()
     return _transport
 
 
@@ -25,17 +24,18 @@ def set_transport(t: Transport) -> None:
 
 def create_transport(mode: str) -> Transport:
     mode = mode.lower().strip()
-    if mode == "gui":
-        return GUITransport()
-    elif mode == "rdp":
+    if mode == "rdp":
         return RDPTransport()
+    elif mode == "gui":
+        raise ValueError(
+            "GUI transport was removed in this fork. RDP is the only transport."
+        )
     else:
-        raise ValueError(f"Unknown transport mode: {mode}. Use 'gui' or 'rdp'.")
+        raise ValueError(f"Unknown transport mode: {mode}. Use 'rdp'.")
 
 
 __all__ = [
     "Transport",
-    "GUITransport",
     "RDPTransport",
     "get_transport",
     "set_transport",

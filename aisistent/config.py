@@ -40,6 +40,12 @@ class Settings:
         self.rdp_pass: str | None = None
         self.rdp_domain: str | None = None
 
+        # Fork safety switch: click injection is OFF unless explicitly
+        # enabled with AISISTENT_ALLOW_CLICK=1. Default is read-only.
+        self.allow_click: bool = os.getenv(
+            "AISISTENT_ALLOW_CLICK", ""
+        ).strip().lower() in ("1", "true", "yes", "on")
+
         # Override from env
         if env := os.getenv("AISISTENT_YOLO_WEIGHTS"):
             self.yolo_weights = Path(env)
