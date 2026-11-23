@@ -166,6 +166,29 @@ vulnerabilities).
      be confused with unmodified upstream 0.2.0. Upstream's
      "aistent" typos in install instructions are corrected.
 
+## Change 9 — logon flags fix (found live, 2026-11-23)
+
+- The xrdp trial failed at logon: xrdp logged "received wrong flags,
+  likely decrypt not working" and dropped the connection, with TLS
+  negotiated and crypt_level at high AND at none. The encryption
+  theory behind the crypt_level change was WRONG — the correction is
+  recorded here in the open. xrdp's own source (libxrdp/xrdp_sec.c,
+  xrdp_sec_process_logon_info, v0.10.6) shows the check: the
+  TS_INFO_PACKET flags field must carry every RDP_LOGON_NORMAL bit
+  (0x33); the "decrypt" wording is historical (with classic RDP
+  security, a bad decrypt garbles that field first).
+- Root cause: simple-rdp 0.8.10's build_client_info_pdu defaults the
+  info flags to 0x53, which omits INFO_MAXIMIZESHELL (0x20):
+  0x53 & 0x33 = 0x13 != 0x33.
+- Fix: `_ForkClientBase` in transport/rdp.py overrides
+  _send_client_info, replicating upstream's method with the missing
+  bit added; both client classes (stock and SPKI) inherit it, and
+  _client_class returns the fork base when the SPKI switch is off.
+  Locked to simple-rdp==0.8.10 — re-verify on any bump; drop the
+  override if upstream fixes its default (a test pins upstream's
+  current default so the bump surfaces it).
+- Tests: tests/test_logon_flags.py (3 tests). Suite: 37 tests.
+
 ## Acceptance tests
 
 `tests/test_trial_trim.py` — click refused by default, click gate opens with
@@ -181,6 +204,9 @@ switch default (off), blank/garbage stay off, and client selection.
 `tests/test_rdp_port.py` — the port plumbing (change 7): settings
 default 3389, RDP_PORT override and range handling, transport
 pass-through and rejection, and the connect_rdp tool's port mapping.
+`tests/test_logon_flags.py` — the logon-flags fix (change 9):
+upstream's default flags pinned as failing xrdp's 0x33 mask, and both
+fork client classes emit flags that satisfy it.
 Run: `python -m unittest discover -s tests -v` in a venv built with the
 `rdp` extra (`pip install ".[rdp]"`). With only the light core deps
 installed, the simple-rdp-dependent tests skip instead of passing, and

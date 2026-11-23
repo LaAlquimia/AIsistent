@@ -106,7 +106,7 @@ class TestSpkiSwitch(unittest.TestCase):
         settings.credssp_spki_fix = True
         self.assertIs(rdp_mod._client_class(), rdp_mod.CredsspSpkiRDPClient)
         settings.credssp_spki_fix = False
-        self.assertIs(rdp_mod._client_class(), rdp_mod._RDPClientBase)
+        self.assertIs(rdp_mod._client_class(), rdp_mod._ForkClientBase)
 
 
 if __name__ == "__main__":
