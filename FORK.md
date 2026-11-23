@@ -189,6 +189,24 @@ vulnerabilities).
   current default so the bump surfaces it).
 - Tests: tests/test_logon_flags.py (3 tests). Suite: 37 tests.
 
+## Change 10 — disconnect teardown survives the closed connect loop (2026-11-23)
+
+- Trial attempt 4 connected, captured, and refused the click, but
+  disconnect_rdp reported an error: the transport drives the client
+  through one asyncio.run per operation, so the TLS transport
+  belongs to the connect call's event loop, which is closed by
+  disconnect time. Upstream's disconnect closes the writer,
+  asyncio's SSL layer schedules its shutdown timeout on the dead
+  loop, and RuntimeError ("Event loop is closed") escapes — while
+  the session is in fact over (xrdp's journal showed the client
+  gone; no session remained).
+- Fix: `_ForkClientBase.disconnect()` swallows exactly that
+  artifact — marks the client disconnected, drops the stream
+  references, closes the raw socket directly (best effort; a socket
+  close does not touch the event loop). Any other error still
+  propagates: honest failures stay failures.
+- Tests: tests/test_disconnect_teardown.py (3 tests). Suite: 40 tests.
+
 ## Acceptance tests
 
 `tests/test_trial_trim.py` — click refused by default, click gate opens with
@@ -207,6 +225,9 @@ pass-through and rejection, and the connect_rdp tool's port mapping.
 `tests/test_logon_flags.py` — the logon-flags fix (change 9):
 upstream's default flags pinned as failing xrdp's 0x33 mask, and both
 fork client classes emit flags that satisfy it.
+`tests/test_disconnect_teardown.py` — the disconnect fix
+(change 10): the closed-loop artifact is swallowed with state
+cleaned up and the raw socket closed; every other error propagates.
 Run: `python -m unittest discover -s tests -v` in a venv built with the
 `rdp` extra (`pip install ".[rdp]"`). With only the light core deps
 installed, the simple-rdp-dependent tests skip instead of passing, and

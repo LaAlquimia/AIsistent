@@ -78,6 +78,48 @@ if _HAS_SIMPLE_RDP:
                 security_header + info_pdu, self._io_channel_id
             )
 
+        async def disconnect(self) -> None:
+            """Disconnect, surviving the closed-loop teardown error.
+
+            The fork's transport drives this client through one
+            asyncio.run per operation, so the TLS transport — created
+            during connect — belongs to an event loop that has already
+            closed by the time disconnect runs. Upstream's disconnect
+            closes the writer; asyncio's SSL layer then tries to
+            schedule its shutdown timeout on that dead loop and
+            RuntimeError ("Event loop is closed") escapes, even though
+            the session is over. Measured on Yggi 2026-11-23: the tool
+            reported the disconnect as an error while xrdp's journal
+            showed the client gone and no session remained.
+
+            This override swallows exactly that artifact: it marks the
+            client disconnected, drops the stream references, and
+            closes the raw socket directly (best effort — closing a
+            socket does not touch the event loop). Any other error
+            from upstream's disconnect still propagates.
+            """
+            try:
+                await super().disconnect()
+            except RuntimeError as exc:
+                if "Event loop is closed" not in str(exc):
+                    raise
+                logger.warning(
+                    "disconnect: upstream teardown hit the closed "
+                    "connect loop; finishing teardown directly"
+                )
+                self._running = False
+                self._connected = False
+                writer = self._tcp_writer
+                self._tcp_reader = None
+                self._tcp_writer = None
+                if writer is not None:
+                    try:
+                        sock = writer.get_extra_info("socket")
+                        if sock is not None:
+                            sock.close()
+                    except Exception:
+                        pass
+
     class CredsspSpkiRDPClient(_ForkClientBase):
         """simple-rdp client with the CredSSP SPKI key form (FORK.md change 6).
 
