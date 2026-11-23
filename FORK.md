@@ -33,11 +33,26 @@ vulnerabilities).
 4. **simple-rdp pinned** to `==0.8.10` (the scanned version) in the `rdp`
    and `all` extras. The RDP protocol risk lives in that library, which is
    NOT forked; re-scan before any version bump.
-5. **mcp SDK pinned below 2.0** (`mcp>=1.0,<2.0`). Found by the acceptance
-   tests on day one: upstream's unbounded `mcp>=1.0` now resolves to mcp
-   2.x, where `mcp.server.fastmcp` was renamed and upstream code cannot
-   import its own server. Migrating to the v2 API is a separate deliberate
-   job, not part of the trial trim.
+5. **Migrated to the mcp 2.x SDK** (2026-11-23; this replaces an interim
+   `mcp<2` pin). Upstream's unbounded `mcp>=1.0` now resolves to mcp 2.x,
+   where `mcp.server.fastmcp` was renamed, so upstream code cannot import
+   its own server. The fork's server now uses
+   `from mcp.server.mcpserver import MCPServer` and pins `mcp==2.3.0`
+   exactly — the version the migration was reviewed and tested against
+   (EGM-reviewed brief: ../MIGRATION-BRIEF.md). SDK bumps get the same
+   re-scan treatment as simple-rdp bumps. Two migration companions ship
+   with it: `main()` now connects at startup only when `--host` is given
+   (a bare launch serves unconnected, the standard MCP pattern — the old
+   `--mode gui` default was removed with the GUI transport), and a
+   module-level lock serializes the handlers that share the global
+   transport, because mcp 2.x can run sync handlers concurrently where
+   v1 serialized them.
+   RESIDUAL RISK, named at review: a successful connect builds the
+   simple-rdp client inside one asyncio event loop and stores it; later
+   capture/click calls run new loops, possibly on other threads. Local
+   tests prove the connect path only. The cross-loop question is settled
+   at deployment, by the first real connect + capture against a live
+   RDP server, read-only, before any reliance.
 
 ## Acceptance tests
 
