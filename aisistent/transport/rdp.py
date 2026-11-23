@@ -72,6 +72,7 @@ class RDPTransport(Transport):
         username = kwargs.get("username") or settings.rdp_user
         password = kwargs.get("password") or settings.rdp_pass
         domain = kwargs.get("domain") or settings.rdp_domain or ""
+        port = int(kwargs.get("port") or settings.rdp_port)
         self._width = int(kwargs.get("width", 1920))
         self._height = int(kwargs.get("height", 1080))
 
@@ -86,6 +87,7 @@ class RDPTransport(Transport):
         async def _do_connect():
             client = _client_class()(
                 host=host,
+                port=port,
                 username=username,
                 password=password,
                 domain=domain,
@@ -97,8 +99,8 @@ class RDPTransport(Transport):
 
         self._client = asyncio.run(_do_connect())
         logger.info(
-            "RDPTransport: connected to %s as %s (%dx%d)",
-            host, username, self._width, self._height,
+            "RDPTransport: connected to %s:%s as %s (%dx%d)",
+            host, port, username, self._width, self._height,
         )
 
     def disconnect(self) -> None:

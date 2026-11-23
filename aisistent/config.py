@@ -39,6 +39,10 @@ class Settings:
         self.rdp_user: str | None = None
         self.rdp_pass: str | None = None
         self.rdp_domain: str | None = None
+        # Fork change 7 (FORK.md): RDP port. Upstream had no way to
+        # reach a server on a nonstandard port; simple-rdp defaulted
+        # to 3389. RDP_PORT env overrides.
+        self.rdp_port: int = 3389
 
         # Fork safety switch: click injection is OFF unless explicitly
         # enabled with AISISTENT_ALLOW_CLICK=1. Default is read-only.
@@ -73,6 +77,11 @@ class Settings:
             self.rdp_pass = env
         if env := os.getenv("RDP_DOMAIN"):
             self.rdp_domain = env
+        if env := os.getenv("RDP_PORT"):
+            try:
+                self.rdp_port = int(env)
+            except ValueError:
+                pass
 
 
 settings = Settings()

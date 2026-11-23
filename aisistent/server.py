@@ -67,6 +67,7 @@ def connect_rdp(
     domain: str = "",
     width: int = 1920,
     height: int = 1080,
+    port: int = 0,
 ) -> str:
     """Connect to a remote Windows machine via headless RDP (simple-rdp).
 
@@ -84,6 +85,7 @@ def connect_rdp(
                 username=username or None,
                 password=password or None,
                 domain=domain or None,
+                port=port or None,
                 width=width,
                 height=height,
             )

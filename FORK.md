@@ -99,6 +99,16 @@ vulnerabilities).
    not advertise support for the Graphics Pipeline" — g-r-d requires
    MS-RDPEGFX, which simple-rdp does not implement. That gap is a
    server-choice question, not something this fork patches.
+7. **RDP port plumbing** (2026-11-23). Upstream `connect_rdp` had no
+   port parameter and simple-rdp's client defaults to 3389, so a
+   server on any other port was unreachable. The trial's server is
+   xrdp on 127.0.0.1:3391 (3391 chosen so GNOME Remote Desktop keeps
+   3389/3390 untouched). `connect_rdp` gains a `port` argument,
+   `RDPTransport` passes it to `RDPClient(port=...)`, and
+   `settings.rdp_port` reads the `RDP_PORT` env var (default 3389;
+   a non-numeric value leaves the default). Tests:
+   `tests/test_rdp_port.py` — settings default/env/garbage handling
+   and transport pass-through against a fake client.
 
 ## Acceptance tests
 
@@ -107,6 +117,8 @@ the switch, GUI transport gone, RDP transport present, server imports.
 `tests/test_credssp_spki_fix.py` — the CredSSP key-form switch (change 6):
 extraction equals the fixture cert's SPKI DER, longer than the raw key,
 switch default (off) and client selection.
+`tests/test_rdp_port.py` — the port plumbing (change 7): settings
+default 3389, RDP_PORT override, transport pass-through.
 Run: `python -m unittest discover -s tests -v` with the light deps installed.
 
 ## Upstream pulls
