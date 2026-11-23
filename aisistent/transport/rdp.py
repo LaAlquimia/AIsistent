@@ -22,16 +22,21 @@ except ImportError:
 if _HAS_SIMPLE_RDP:
 
     class CredsspSpkiRDPClient(_RDPClientBase):
-        """simple-rdp client with the CredSSP SPKI fix (FORK.md change 6).
+        """simple-rdp client with the CredSSP SPKI key form (FORK.md change 6).
 
         Upstream 0.8.10's _extract_public_key_from_cert returns the raw
         public key contents (270 bytes for an RSA-2048 cert). CredSSP
         v5+ pubKeyAuth is defined over the full SubjectPublicKeyInfo
-        DER (~294 bytes); GNOME/FreeRDP verifies against the SPKI and
-        rejects the raw-key proof before credentials are sent. This
-        override returns the complete SPKI DER instead. It is locked
-        to simple-rdp==0.8.10's private method — re-verify on any
-        version bump. asn1crypto is simple-rdp's own dependency.
+        DER (~294 bytes), and this override returns that form for
+        servers that verify it that way. MEASURED on Yggi's
+        GNOME/FreeRDP server (2026-11-23): that server verifies the
+        hash over the RAW key — with this SPKI form it logged "Could
+        not verify server's hash", and with the stock raw form
+        authentication completed. The shim is therefore opt-in only
+        (AISISTENT_CREDSSP_SPKI_FIX=1), for spec-strict servers; the
+        default is upstream's raw-key behavior. It is locked to
+        simple-rdp==0.8.10's private method — re-verify on any
+        version bump. asn1crypto is declared in the fork's rdp extra.
         """
 
         def _extract_public_key_from_cert(self, cert_der: bytes) -> bytes:
@@ -73,6 +78,10 @@ class RDPTransport(Transport):
         password = kwargs.get("password") or settings.rdp_pass
         domain = kwargs.get("domain") or settings.rdp_domain or ""
         port = int(kwargs.get("port") or settings.rdp_port)
+        if not 1 <= port <= 65535:
+            raise ValueError(
+                f"Invalid RDP port: {port}. Must be between 1 and 65535."
+            )
         self._width = int(kwargs.get("width", 1920))
         self._height = int(kwargs.get("height", 1080))
 
@@ -81,6 +90,18 @@ class RDPTransport(Transport):
                 "RDP credentials required. Set RDP_HOST, RDP_USER, RDP_PASS "
                 "env vars or pass host/username/password to connect_rdp()"
             )
+
+        if self._client is not None:
+            # Reconnecting over a live session: tear the old one down
+            # first (best effort) instead of orphaning it.
+            try:
+                self.disconnect()
+            except Exception:
+                logger.warning(
+                    "RDPTransport: old session disconnect failed; replacing it",
+                    exc_info=True,
+                )
+                self._client = None
 
         import asyncio
 
@@ -110,8 +131,12 @@ class RDPTransport(Transport):
             async def _do_disconnect():
                 await self._client.disconnect()
 
-            asyncio.run(_do_disconnect())
-            self._client = None
+            try:
+                asyncio.run(_do_disconnect())
+            finally:
+                # The session is gone either way; never leave the
+                # transport believing it is still connected.
+                self._client = None
             logger.info("RDPTransport: disconnected")
 
     def capture(self) -> tuple[float, str]:
@@ -135,6 +160,17 @@ class RDPTransport(Transport):
         return duration, b64
 
     def click(self, x_percent: float, y_percent: float) -> dict:
+        # Backstop for the fork's click gate (FORK.md change 1): the
+        # primary gate is in aisistent/action.py, but the transport
+        # refuses too, so no internal caller can bypass the switch.
+        if not settings.allow_click:
+            return {
+                "status": "error",
+                "message": (
+                    "Click injection is disabled in this fork "
+                    "(AISISTENT_ALLOW_CLICK is off). Read-only mode."
+                ),
+            }
         if self._client is None:
             raise RuntimeError("Not connected. Call connect_rdp() first")
 

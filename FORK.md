@@ -17,8 +17,11 @@ vulnerabilities).
 ## Changes vs upstream
 
 1. **Click switch (read-only by default).** `inject_rdp_click` is refused
-   unless `AISISTENT_ALLOW_CLICK=1` is set in the environment. Gate lives in
-   `aisistent/action.py`, driven by `settings.allow_click` in
+   unless `AISISTENT_ALLOW_CLICK=1` is set in the environment — only the
+   exact value `1` opens it; any other value leaves it off. The gate is
+   enforced at two layers: `aisistent/action.py` (the tool path) and
+   `RDPTransport.click` itself (a backstop, so no internal caller can
+   bypass the switch), both driven by `settings.allow_click` in
    `aisistent/config.py`.
 2. **GUI transport removed.** `aisistent/transport/gui.py` deleted (it was
    the only module spawning subprocesses, for local-screen capture).
@@ -78,9 +81,11 @@ vulnerabilities).
    `CredsspSpkiRDPClient`, a subclass overriding
    `_extract_public_key_from_cert` to return
    `subject_public_key_info.dump()` (the complete SPKI DER), selected
-   only when the switch is ON. `asn1crypto` needed no new dependency
-   entry: it is already a direct dependency of simple-rdp 0.8.10
-   itself (`Requires-Dist: asn1crypto>=1.5.1`).
+   only when the switch is ON. The shim imports `asn1crypto`; it
+   arrives as a direct dependency of simple-rdp 0.8.10 itself
+   (`Requires-Dist: asn1crypto>=1.5.1`), and the fork ALSO declares
+   it directly in the `rdp` extra (`asn1crypto==1.5.1`) so the shim
+   never depends on upstream's metadata staying unchanged.
    Switch: `AISISTENT_CREDSSP_SPKI_FIX`, default **OFF** (stock
    raw-key behavior — what Yggi's server accepts); `=1` selects the
    SPKI form for a server that rejects the raw-key proof
@@ -106,20 +111,80 @@ vulnerabilities).
    3389/3390 untouched). `connect_rdp` gains a `port` argument,
    `RDPTransport` passes it to `RDPClient(port=...)`, and
    `settings.rdp_port` reads the `RDP_PORT` env var (default 3389;
-   a non-numeric value leaves the default). Tests:
-   `tests/test_rdp_port.py` — settings default/env/garbage handling
-   and transport pass-through against a fake client.
+   a non-numeric or out-of-range value leaves the default). Ports are
+   validated everywhere they enter: an explicit port outside
+   1..65535 is rejected with a named error at the tool and the
+   transport. The startup path is plumbed too: `main()` accepts
+   `--port` for its `--host` startup connection (falling back to
+   RDP_PORT, then 3389). Tests: `tests/test_rdp_port.py` — settings
+   default/env/garbage/range handling, transport pass-through and
+   rejection against a fake client, and the tool layer's mapping.
+8. **EGM fork-review fix round** (2026-11-23; a zero-context review of
+   this fork returned NO-GO — 1 Blocker, 17 Major, 8 Nit — and every
+   finding was resolved in the open; the package and resolutions live
+   at ../EGM-PACKAGE-FORK-2026-11-23.md). What changed beyond the
+   items folded into changes 1, 6 and 7 above:
+   - The SPKI class docstring in `transport/rdp.py` carried the
+     disproven theory (that GNOME/FreeRDP verifies the SPKI form) as
+     fact. It now records the measured result, matching change 6(b).
+   - Both env switches parse as strict whitelists: only the exact
+     value `1` turns either on; blank or garbage values fail safe to
+     OFF. (The CredSSP switch previously used a blacklist — a blank
+     value turned the shim ON.)
+   - Transport state on error paths: `set_transport` never lets a
+     failing old disconnect block a new session; `disconnect` clears
+     the client even when the disconnect itself fails; `connect`
+     tears down a live session before replacing it. `disconnect_rdp`
+     with no live session now answers honestly ("Not connected")
+     instead of claiming success, and `capture_rdp_screen`'s result
+     no longer labels the server's own OS as the remote platform.
+   - Detection reads only the fork's own weights path:
+     upstream's silent fallbacks to weights in sibling projects
+     outside this tree (self-operating-computer, OmniParser) are
+     removed, and `Settings` no longer computes those external paths.
+   - Pin discipline, scoped honestly: the exact pins cover the
+     fork's trial surface — core (`mcp==2.3.0`, `Pillow==13.0.0`)
+     plus the `rdp` extra (`simple-rdp==0.8.10`,
+     `asn1crypto==1.5.1`) — and the version tests assert all four.
+     The `detect`/`cpu`/`cuda` extras are NOT pinned and are outside
+     the trial; pin them before any use. `mss` was dropped from the
+     extras entirely (nothing imports it; the local-capture transport
+     it served is deleted).
+   - Network guarantee, scoped honestly: with the core + `rdp`
+     install, nothing but the RDP connection touches the network.
+     The OCR and detection tools are outside the trial and outside
+     that guarantee: EasyOCR downloads its model files on first use,
+     so those tools are not network-clean until their models are
+     pre-provisioned.
+   - Test honesty: the concurrency test now exercises a live (fake)
+     transport and fails if the serialization lock is removed; the
+     protocol-session test runs with a scrubbed environment and aims
+     its refused connect at a dead high port, never a real server;
+     the session has a total deadline, not just per-read timeouts.
+   - The fork carries its own version from this round: 0.2.1
+     (pyproject + `__version__`), so logs and installs can no longer
+     be confused with unmodified upstream 0.2.0. Upstream's
+     "aistent" typos in install instructions are corrected.
 
 ## Acceptance tests
 
 `tests/test_trial_trim.py` — click refused by default, click gate opens with
-the switch, GUI transport gone, RDP transport present, server imports.
+the switch, GUI transport gone, RDP transport present, server imports, and
+the click switch's env parsing (only "1" opens it).
+`tests/test_mcp2_migration.py` — the mcp 2.x migration (change 5) and the
+pin set: exact versions asserted (mcp, Pillow, simple-rdp), seven tools
+registered, a bare-launch stdio protocol session in a scrubbed environment,
+concurrent error-path calls, and the transport-serialization test (T7).
 `tests/test_credssp_spki_fix.py` — the CredSSP key-form switch (change 6):
 extraction equals the fixture cert's SPKI DER, longer than the raw key,
-switch default (off) and client selection.
+switch default (off), blank/garbage stay off, and client selection.
 `tests/test_rdp_port.py` — the port plumbing (change 7): settings
-default 3389, RDP_PORT override, transport pass-through.
-Run: `python -m unittest discover -s tests -v` with the light deps installed.
+default 3389, RDP_PORT override and range handling, transport
+pass-through and rejection, and the connect_rdp tool's port mapping.
+Run: `python -m unittest discover -s tests -v` in a venv built with the
+`rdp` extra (`pip install ".[rdp]"`). With only the light core deps
+installed, the simple-rdp-dependent tests skip instead of passing, and
+the suite is green with skips — the full evidence requires the extra.
 
 ## Upstream pulls
 

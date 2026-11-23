@@ -14,10 +14,6 @@ class Settings:
     temp_dir: Path = field(init=False)
     yolo_weights: Path = field(init=False)
 
-    # External project paths (OmniParser, self-operating-computer)
-    omniparser_path: Path | None = field(init=False)
-    soc_path: Path | None = field(init=False)
-
     def __post_init__(self):
         self.temp_dir = self.project_root / "temp_captures"
         self.yolo_weights = (
@@ -26,13 +22,6 @@ class Settings:
             / "weights"
             / "best.pt"
         )
-
-        # External dependencies (optional, for backward compat)
-        desktop = self.project_root.parent
-        omni = desktop / "OmniParser"
-        soc = desktop / "self-operating-computer"
-        self.omniparser_path = omni if omni.is_dir() else None
-        self.soc_path = soc if soc.is_dir() else None
 
         # RDP settings (for headless transport)
         self.rdp_host: str | None = None
@@ -45,10 +34,12 @@ class Settings:
         self.rdp_port: int = 3389
 
         # Fork safety switch: click injection is OFF unless explicitly
-        # enabled with AISISTENT_ALLOW_CLICK=1. Default is read-only.
-        self.allow_click: bool = os.getenv(
-            "AISISTENT_ALLOW_CLICK", ""
-        ).strip().lower() in ("1", "true", "yes", "on")
+        # enabled. Only the exact value "1" opens it
+        # (AISISTENT_ALLOW_CLICK=1, as FORK.md states) — any other
+        # value, including "true"/"yes"/garbage, leaves it off.
+        self.allow_click: bool = (
+            os.getenv("AISISTENT_ALLOW_CLICK", "").strip() == "1"
+        )
 
         # Fork compatibility shim (FORK.md change 6): simple-rdp 0.8.10's
         # CredSSP pubKeyAuth feeds the hash the RAW public key. CredSSP
@@ -60,9 +51,12 @@ class Settings:
         # completed. Default is therefore OFF (stock behavior); set
         # AISISTENT_CREDSSP_SPKI_FIX=1 only for a server that rejects
         # the raw-key proof (spec-strict servers, e.g. Windows).
-        self.credssp_spki_fix: bool = os.getenv(
-            "AISISTENT_CREDSSP_SPKI_FIX", "0"
-        ).strip().lower() not in ("0", "false", "no", "off")
+        # Parsed as a whitelist — only the exact value "1" turns it
+        # on; a blank or garbage value stays OFF (the measured-good
+        # default) instead of silently flipping behavior.
+        self.credssp_spki_fix: bool = (
+            os.getenv("AISISTENT_CREDSSP_SPKI_FIX", "").strip() == "1"
+        )
 
         # Override from env
         if env := os.getenv("AISISTENT_YOLO_WEIGHTS"):
@@ -79,9 +73,14 @@ class Settings:
             self.rdp_domain = env
         if env := os.getenv("RDP_PORT"):
             try:
-                self.rdp_port = int(env)
+                _port = int(env)
             except ValueError:
                 pass
+            else:
+                # Only a usable TCP port may override the default;
+                # 0, negatives and >65535 keep 3389.
+                if 1 <= _port <= 65535:
+                    self.rdp_port = _port
 
 
 settings = Settings()

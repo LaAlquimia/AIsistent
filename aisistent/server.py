@@ -12,7 +12,7 @@ from .capture import capture_screen
 from .ocr import run_ocr
 from .detection import detect_buttons
 from .action import inject_click
-from .transport import get_transport, set_transport, create_transport
+from .transport import get_transport, set_transport, create_transport, current_transport
 
 logger = logging.getLogger(__name__)
 
@@ -69,16 +69,22 @@ def connect_rdp(
     height: int = 1080,
     port: int = 0,
 ) -> str:
-    """Connect to a remote Windows machine via headless RDP (simple-rdp).
+    """Connect to a remote machine via headless RDP (simple-rdp).
 
     Once connected, capture_rdp_screen and inject_rdp_click use this
     RDP session.
 
     Credentials can be passed as arguments or set via RDP_HOST, RDP_USER,
-    RDP_PASS env vars. Args take precedence over env vars.
+    RDP_PASS env vars. Args take precedence over env vars. Port: the
+    `port` argument wins, then RDP_PORT, then 3389.
     """
     with _transport_lock:
         try:
+            if port and not 1 <= port <= 65535:
+                return json.dumps({
+                    "status": "error",
+                    "message": f"Invalid port: {port}. Must be between 1 and 65535.",
+                })
             transport = create_transport("rdp")
             transport.connect(
                 host=host or None,
@@ -108,7 +114,13 @@ def disconnect_rdp() -> str:
     """
     with _transport_lock:
         try:
-            get_transport().disconnect()
+            transport = current_transport()
+            if transport is None or not getattr(transport, "is_connected", False):
+                return json.dumps({
+                    "status": "error",
+                    "message": "Not connected. Nothing to disconnect.",
+                })
+            transport.disconnect()
             return json.dumps({
                 "status": "success",
                 "action": "Disconnected RDP transport",
@@ -131,7 +143,9 @@ def capture_rdp_screen() -> str:
             return json.dumps({
                 "status": "success",
                 "duration_seconds": f"{duration:.4f}",
-                "platform": CURRENT_OS.value,
+                # The image shows the REMOTE machine's screen; the
+                # server's own OS is not the remote platform.
+                "platform": "remote (via RDP)",
                 "image_base64": b64,
             })
         except Exception as e:
@@ -144,7 +158,7 @@ def run_apple_ocr(image_base64: str) -> str:
     """Run OCR on a base64-encoded image.
 
     macOS: Apple Vision OCR on Neural Engine (~0.05s).
-    Other: EasyOCR on CPU or CUDA GPU (pip install aistent[all]).
+    Other: EasyOCR on CPU or CUDA GPU (pip install aisistent[all]).
     """
     try:
         image_bytes = base64.b64decode(image_base64)
@@ -201,6 +215,8 @@ def main(argv: list[str] | None = None) -> int:
         help="Transport mode: rdp (headless RDP; the only mode in this fork)",
     )
     parser.add_argument("--host", help="RDP host (connects at startup when given)")
+    parser.add_argument("--port", type=int, default=0,
+                        help="RDP port for the startup connection (default: RDP_PORT or 3389)")
     parser.add_argument("--user", help="RDP username (for the startup connection)")
     parser.add_argument("--password", help="RDP password (for the startup connection)")
     parser.add_argument("--domain", help="RDP domain (for the startup connection)")
@@ -222,6 +238,7 @@ def main(argv: list[str] | None = None) -> int:
             transport = create_transport("rdp")
             transport.connect(
                 host=args.host,
+                port=args.port or None,
                 username=args.user,
                 password=args.password,
                 domain=args.domain or "",

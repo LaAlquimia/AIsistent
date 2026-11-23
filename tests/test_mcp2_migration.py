@@ -5,9 +5,16 @@ T0/T1: the environment carries exactly mcp 2.3.0 (the fork's pin) and
 T2:    a live stdio JSON-RPC session against the server launched bare
        (`python -m aisistent`, no arguments) — initialize, tools/list,
        the click refusal, a refused connect_rdp, and proof the server
-       is still alive afterwards.
+       is still alive afterwards. The session runs with a scrubbed
+       environment (no RDP_*/AISISTENT_* variables leak in) and its
+       refused connect is aimed at a dead high port (33999), never a
+       real RDP server — on the deployment machine 3389 is a live
+       GNOME Remote Desktop and must not receive trial credentials.
 T6:    concurrent handler calls under v2's worker-thread dispatch all
        return their normal error JSON; none raises.
+T7:    the transport lock actually serializes: with a slow fake
+       transport installed, parallel capture calls never overlap
+       inside the transport (deleting the lock fails this test).
 
 Run from a clean venv built with:  pip install ".[rdp]"
     python -m unittest discover -s tests -v
@@ -15,6 +22,7 @@ Run from a clean venv built with:  pip install ".[rdp]"
 
 import asyncio
 import importlib.metadata
+import importlib.util
 import json
 import os
 import select
@@ -22,6 +30,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 
 EXPECTED_TOOLS = {
@@ -35,11 +44,21 @@ EXPECTED_TOOLS = {
 }
 
 STEP_TIMEOUT = 15  # seconds, per JSON-RPC step (brief T2)
+SESSION_DEADLINE = 60  # seconds, total for the whole T2 session (brief T2)
 
 
 class TestSdkVersionAndRegistration(unittest.TestCase):
     def test_mcp_version_is_the_pin(self):
         self.assertEqual(importlib.metadata.version("mcp"), "2.3.0")
+
+    def test_pillow_version_is_the_pin(self):
+        self.assertEqual(importlib.metadata.version("Pillow"), "13.0.0")
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("simple_rdp"), "simple-rdp not installed"
+    )
+    def test_simple_rdp_version_is_the_pin(self):
+        self.assertEqual(importlib.metadata.version("simple-rdp"), "0.8.10")
 
     def test_seven_tools_registered(self):
         import aisistent.server as srv
@@ -54,6 +73,7 @@ class StdioSession:
     def __init__(self, proc):
         self.proc = proc
         self.buf = ""
+        self.deadline = time.monotonic() + SESSION_DEADLINE
 
     def send(self, obj):
         self.proc.stdin.write((json.dumps(obj) + "\n").encode("utf-8"))
@@ -61,6 +81,8 @@ class StdioSession:
 
     def await_id(self, want_id):
         while True:
+            if time.monotonic() > self.deadline:
+                raise TimeoutError("T2 session exceeded its total deadline")
             line = self._read_line()
             msg = json.loads(line)
             if msg.get("id") == want_id:
@@ -83,8 +105,13 @@ class StdioSession:
 
 class TestLiveProtocol(unittest.TestCase):
     def test_stdio_session(self):
-        env = dict(os.environ)
-        env.pop("AISISTENT_ALLOW_CLICK", None)  # switch off: read-only
+        # Scrubbed environment: only the basics survive, so no ambient
+        # RDP_*/AISISTENT_* variable can retarget the session.
+        env = {
+            k: os.environ[k]
+            for k in ("PATH", "HOME", "LANG", "LC_ALL")
+            if k in os.environ
+        }
         with tempfile.TemporaryDirectory() as tmp:
             proc = subprocess.Popen(
                 [sys.executable, "-m", "aisistent"],
@@ -124,6 +151,9 @@ class TestLiveProtocol(unittest.TestCase):
                     "host": "127.0.0.1",
                     "username": "trial",
                     "password": "trial",
+                    # A dead high port: nothing real is dialed, on any
+                    # machine — 3389 is a live server on the target box.
+                    "port": 33999,
                 })
                 self.assertEqual(body["status"], "error")
                 self.assertTrue(body["message"])
@@ -181,6 +211,77 @@ class TestConcurrentHandlers(unittest.TestCase):
         self.assertEqual(len(results), 8)
         for raw in results:
             self.assertEqual(json.loads(raw)["status"], "error")
+
+
+class _ConcurrencyProbe:
+    """Fake transport whose capture() is slow enough to overlap."""
+
+    def __init__(self):
+        self._counter_lock = threading.Lock()
+        self.active = 0
+        self.max_active = 0
+        self.is_connected = True
+
+    def connect(self, **kwargs):
+        self.is_connected = True
+
+    def disconnect(self):
+        self.is_connected = False
+
+    def capture(self):
+        with self._counter_lock:
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+        time.sleep(0.25)
+        with self._counter_lock:
+            self.active -= 1
+        return 0.0, "aGVsbG8="
+
+    def click(self, x_percent, y_percent):
+        return {"status": "success"}
+
+
+class TestTransportLock(unittest.TestCase):
+    """T7: handlers sharing the transport are serialized by the lock.
+
+    Unlike T6 (whose calls all fail before touching the transport),
+    these calls succeed against a slow fake — without the lock in
+    server.py they would overlap inside capture() and this fails.
+    """
+
+    def setUp(self):
+        import aisistent.transport as transport_mod
+
+        self.transport_mod = transport_mod
+        self._saved = transport_mod._transport
+        self.probe = _ConcurrencyProbe()
+        transport_mod.set_transport(self.probe)
+
+    def tearDown(self):
+        self.transport_mod._transport = self._saved
+
+    def test_parallel_captures_never_overlap(self):
+        import aisistent.server as srv
+
+        results, errors = [], []
+
+        def call_capture():
+            try:
+                results.append(srv.capture_rdp_screen())
+            except Exception as e:  # noqa: BLE001
+                errors.append(e)
+
+        threads = [threading.Thread(target=call_capture) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), 4)
+        for raw in results:
+            self.assertEqual(json.loads(raw)["status"], "success")
+        self.assertEqual(self.probe.max_active, 1)
 
 
 if __name__ == "__main__":

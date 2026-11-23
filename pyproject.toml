@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aisistent"
-version = "0.2.0"
+version = "0.2.1"
 description = "MCP server for non-intrusive RDP automation. Cross-platform OCR, YOLO detection & click injection."
 readme = "README.md"
 license = {text = "MIT"}
@@ -27,7 +27,7 @@ classifiers = [
 
 dependencies = [
   "mcp==2.3.0",
-  "Pillow>=10.0",
+  "Pillow==13.0.0",
 ]
 
 [project.optional-dependencies]
@@ -38,12 +38,10 @@ apple = [
 ]
 cpu = [
   "easyocr>=1.7",
-  "mss>=9.0",
   "opencv-python-headless>=4.8",
 ]
 cuda = [
   "easyocr>=1.7",
-  "mss>=9.0",
   "opencv-python-headless>=4.8",
 ]
 detect = [
@@ -52,14 +50,15 @@ detect = [
 ]
 rdp = [
   "simple-rdp==0.8.10",
+  "asn1crypto==1.5.1",
 ]
 all = [
   "easyocr>=1.7",
-  "mss>=9.0",
   "opencv-python-headless>=4.8",
   "torch>=2.0",
   "ultralytics>=8.0",
   "simple-rdp==0.8.10",
+  "asn1crypto==1.5.1",
 ]
 
 [project.urls]

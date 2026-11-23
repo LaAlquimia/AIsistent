@@ -7,13 +7,17 @@ was unreachable.
 
 Pass conditions:
 1. Settings.rdp_port defaults to 3389; RDP_PORT env overrides it;
-   a non-numeric RDP_PORT leaves the default.
+   a non-numeric or out-of-range RDP_PORT leaves the default.
 2. RDPTransport passes an explicit port through to the client.
 3. RDPTransport falls back to settings.rdp_port when no port is given.
+4. RDPTransport rejects an out-of-range explicit port by name.
+5. The connect_rdp tool maps its port argument to the transport
+   (and validates it before any transport is created).
 
 Run with:  python -m unittest discover -s tests -v
 """
 
+import json
 import os
 import unittest
 from unittest import mock
@@ -47,7 +51,13 @@ class TestRdpPortSettings(unittest.TestCase):
         with mock.patch.dict(os.environ, {"RDP_PORT": "abc"}):
             self.assertEqual(Settings().rdp_port, 3389)
 
+    def test_env_out_of_range_keeps_default(self):
+        for bad in ("0", "-1", "65536", "70000"):
+            with mock.patch.dict(os.environ, {"RDP_PORT": bad}):
+                self.assertEqual(Settings().rdp_port, 3389, f"RDP_PORT={bad}")
 
+
+@unittest.skipUnless(rdp_mod._HAS_SIMPLE_RDP, "simple-rdp not installed")
 class TestRdpPortTransport(unittest.TestCase):
     def _connect(self, **kwargs):
         with mock.patch.object(rdp_mod, "_client_class", lambda: _FakeClient):
@@ -62,6 +72,65 @@ class TestRdpPortTransport(unittest.TestCase):
     def test_default_port_from_settings(self):
         captured = self._connect()
         self.assertEqual(captured.get("port"), rdp_mod.settings.rdp_port)
+
+    def test_out_of_range_port_rejected(self):
+        with self.assertRaises(ValueError):
+            self._connect(port=70000)
+
+
+class _RecordingTransport:
+    def __init__(self):
+        self.connect_kwargs = None
+        self.is_connected = False
+
+    def connect(self, **kwargs):
+        self.connect_kwargs = kwargs
+        self.is_connected = True
+
+    def disconnect(self):
+        self.is_connected = False
+
+
+class TestConnectRdpToolPort(unittest.TestCase):
+    """The tool layer (FORK.md change 7's headline) maps port through."""
+
+    def setUp(self):
+        import aisistent.server as srv
+        import aisistent.transport as transport_mod
+
+        self.srv = srv
+        self.transport_mod = transport_mod
+        self._saved_global = transport_mod._transport
+        self.fake = _RecordingTransport()
+        self._patcher = mock.patch.object(
+            srv, "create_transport", lambda mode: self.fake
+        )
+        self._patcher.start()
+
+    def tearDown(self):
+        self._patcher.stop()
+        self.transport_mod._transport = self._saved_global
+
+    def test_port_argument_reaches_transport(self):
+        raw = self.srv.connect_rdp(
+            host="127.0.0.1", username="u", password="p", port=3391
+        )
+        self.assertEqual(json.loads(raw)["status"], "success")
+        self.assertEqual(self.fake.connect_kwargs.get("port"), 3391)
+
+    def test_omitted_port_passes_none(self):
+        raw = self.srv.connect_rdp(host="127.0.0.1", username="u", password="p")
+        self.assertEqual(json.loads(raw)["status"], "success")
+        self.assertIsNone(self.fake.connect_kwargs.get("port"))
+
+    def test_out_of_range_port_rejected_before_connect(self):
+        raw = self.srv.connect_rdp(
+            host="127.0.0.1", username="u", password="p", port=70000
+        )
+        body = json.loads(raw)
+        self.assertEqual(body["status"], "error")
+        self.assertIn("Invalid port", body["message"])
+        self.assertIsNone(self.fake.connect_kwargs)
 
 
 if __name__ == "__main__":

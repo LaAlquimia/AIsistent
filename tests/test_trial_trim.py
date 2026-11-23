@@ -11,9 +11,11 @@ Pass conditions:
 4. The MCP server module imports and registers its tools.
 """
 
+import os
 import unittest
+from unittest import mock
 
-from aisistent.config import settings
+from aisistent.config import Settings, settings
 from aisistent.action import inject_click
 from aisistent.transport import create_transport
 
@@ -50,6 +52,34 @@ class TestTrialTrim(unittest.TestCase):
         import aisistent.server as srv
 
         self.assertTrue(hasattr(srv, "mcp"))
+
+
+class TestClickSwitchEnvParsing(unittest.TestCase):
+    """The gate is configured by the environment; prove that layer.
+
+    Only the exact value "1" opens the gate (FORK.md change 1).
+    """
+
+    def _allow_click(self, env):
+        with mock.patch.dict(os.environ, env, clear=False):
+            if "AISISTENT_ALLOW_CLICK" not in env:
+                os.environ.pop("AISISTENT_ALLOW_CLICK", None)
+            return Settings().allow_click
+
+    def test_unset_is_off(self):
+        self.assertFalse(self._allow_click({}))
+
+    def test_zero_is_off(self):
+        self.assertFalse(self._allow_click({"AISISTENT_ALLOW_CLICK": "0"}))
+
+    def test_one_is_on(self):
+        self.assertTrue(self._allow_click({"AISISTENT_ALLOW_CLICK": "1"}))
+
+    def test_true_is_off(self):
+        self.assertFalse(self._allow_click({"AISISTENT_ALLOW_CLICK": "true"}))
+
+    def test_garbage_is_off(self):
+        self.assertFalse(self._allow_click({"AISISTENT_ALLOW_CLICK": "open"}))
 
 
 if __name__ == "__main__":

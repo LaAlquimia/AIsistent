@@ -10,9 +10,10 @@ Pass conditions:
 1. The shim's extraction equals the certificate's SPKI DER exactly.
 2. The shim's output is longer than the upstream raw-key extraction
    (294 vs 270 bytes on the committed RSA-2048 fixture).
-3. The switch AISISTENT_CREDSSP_SPKI_FIX defaults ON, an explicit
-   0/false/no/off turns it off, and RDPTransport's client-class
-   selection follows the switch.
+3. The switch AISISTENT_CREDSSP_SPKI_FIX defaults OFF (the measured
+   behavior of Yggi's GNOME/FreeRDP server), only the exact value
+   "1" turns it on — a blank or garbage value stays OFF — and
+   RDPTransport's client-class selection follows the switch.
 
 The certificate is a committed fixture (tests/fixtures/test_cert.der,
 a throwaway self-signed RSA-2048 cert) — no network, no local keys.
@@ -87,6 +88,18 @@ class TestSpkiSwitch(unittest.TestCase):
             os.environ, {"AISISTENT_CREDSSP_SPKI_FIX": "1"}
         ):
             self.assertTrue(Settings().credssp_spki_fix)
+
+    def test_switch_blank_stays_off(self):
+        with mock.patch.dict(
+            os.environ, {"AISISTENT_CREDSSP_SPKI_FIX": ""}
+        ):
+            self.assertFalse(Settings().credssp_spki_fix)
+
+    def test_switch_garbage_stays_off(self):
+        with mock.patch.dict(
+            os.environ, {"AISISTENT_CREDSSP_SPKI_FIX": "enabled"}
+        ):
+            self.assertFalse(Settings().credssp_spki_fix)
 
     @unittest.skipUnless(rdp_mod._HAS_SIMPLE_RDP, "simple-rdp not installed")
     def test_transport_client_selection_follows_switch(self):
