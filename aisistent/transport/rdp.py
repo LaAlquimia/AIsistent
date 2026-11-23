@@ -10,12 +10,46 @@ from .base import Transport
 logger = logging.getLogger(__name__)
 
 _HAS_SIMPLE_RDP = False
+_RDPClientBase = None
 try:
-    from simple_rdp import RDPClient
+    from simple_rdp import RDPClient as _RDPClientBase
 
     _HAS_SIMPLE_RDP = True
 except ImportError:
     logger.debug("simple-rdp not installed — RDP headless transport unavailable")
+
+
+if _HAS_SIMPLE_RDP:
+
+    class CredsspSpkiRDPClient(_RDPClientBase):
+        """simple-rdp client with the CredSSP SPKI fix (FORK.md change 6).
+
+        Upstream 0.8.10's _extract_public_key_from_cert returns the raw
+        public key contents (270 bytes for an RSA-2048 cert). CredSSP
+        v5+ pubKeyAuth is defined over the full SubjectPublicKeyInfo
+        DER (~294 bytes); GNOME/FreeRDP verifies against the SPKI and
+        rejects the raw-key proof before credentials are sent. This
+        override returns the complete SPKI DER instead. It is locked
+        to simple-rdp==0.8.10's private method — re-verify on any
+        version bump. asn1crypto is simple-rdp's own dependency.
+        """
+
+        def _extract_public_key_from_cert(self, cert_der: bytes) -> bytes:
+            from asn1crypto.x509 import Certificate
+
+            cert = Certificate.load(cert_der)
+            spki = cert["tbs_certificate"]["subject_public_key_info"]
+            return spki.dump()
+
+else:
+    CredsspSpkiRDPClient = None
+
+
+def _client_class():
+    """Pick the RDP client class per the AISISTENT_CREDSSP_SPKI_FIX switch."""
+    if settings.credssp_spki_fix:
+        return CredsspSpkiRDPClient
+    return _RDPClientBase
 
 
 class RDPTransport(Transport):
@@ -50,7 +84,7 @@ class RDPTransport(Transport):
         import asyncio
 
         async def _do_connect():
-            client = RDPClient(
+            client = _client_class()(
                 host=host,
                 username=username,
                 password=password,

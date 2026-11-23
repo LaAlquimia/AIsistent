@@ -46,6 +46,15 @@ class Settings:
             "AISISTENT_ALLOW_CLICK", ""
         ).strip().lower() in ("1", "true", "yes", "on")
 
+        # Fork compatibility shim (FORK.md change 6): simple-rdp 0.8.10's
+        # CredSSP pubKeyAuth uses the raw public key, but CredSSP v5+
+        # defines it over the full SubjectPublicKeyInfo DER, and
+        # GNOME/FreeRDP rejects the raw-key proof. The shim is ON unless
+        # explicitly disabled with AISISTENT_CREDSSP_SPKI_FIX=0.
+        self.credssp_spki_fix: bool = os.getenv(
+            "AISISTENT_CREDSSP_SPKI_FIX", "1"
+        ).strip().lower() not in ("0", "false", "no", "off")
+
         # Override from env
         if env := os.getenv("AISISTENT_YOLO_WEIGHTS"):
             self.yolo_weights = Path(env)

@@ -53,11 +53,46 @@ vulnerabilities).
    tests prove the connect path only. The cross-loop question is settled
    at deployment, by the first real connect + capture against a live
    RDP server, read-only, before any reliance.
+6. **CredSSP SPKI shim** (2026-11-23). The first real connect against
+   Yggi's GNOME Remote Desktop failed with "CredSSP public key
+   verification failed" — measured, not guessed: the diagnostic run
+   (job dd91740caed7, dummy credentials, debug logging) showed the
+   server negotiates CredSSP version 6, the client runs the v5+
+   hash-based pubKeyAuth, and the public key it feeds that hash is
+   **270 bytes**. Root cause, read in simple-rdp 0.8.10's own source:
+   `RDPClient._extract_public_key_from_cert` returns the RAW public
+   key contents, but CredSSP v5+ pubKeyAuth is defined over the full
+   **SubjectPublicKeyInfo DER (294 bytes** for Yggi's RSA-2048 cert).
+   The server verifies the client's proof, gets a mismatch, and
+   answers with an error code at the pubKeyAuth step — before
+   credentials are ever sent, so the password was never implicated.
+   Fix: `aisistent/transport/rdp.py` defines `CredsspSpkiRDPClient`, a
+   subclass overriding that one method to return
+   `subject_public_key_info.dump()` (the complete SPKI DER), and
+   `RDPTransport` connects with it. `asn1crypto` needed no new
+   dependency entry: it is already a direct dependency of
+   simple-rdp 0.8.10 itself (`Requires-Dist: asn1crypto>=1.5.1`), and
+   it is the same library upstream's broken method uses.
+   Switch: `AISISTENT_CREDSSP_SPKI_FIX`, default **ON** (the library
+   is broken without it); `=0` (or false/no/off) selects the stock
+   upstream client class cleanly.
+   PIN DISCIPLINE: the shim overrides a PRIVATE method of
+   simple-rdp==0.8.10. It is locked to that exact pin — on any
+   simple-rdp version bump, re-verify the private method still exists
+   with this signature and that upstream has not fixed the extraction
+   (if it has, drop the shim), then re-run the acceptance tests.
+   Tests: `tests/test_credssp_spki_fix.py` against a committed
+   throwaway RSA-2048 fixture cert (`tests/fixtures/test_cert.der`) —
+   shim output equals the SPKI DER exactly, 294 vs 270 bytes, switch
+   default/selection proven.
 
 ## Acceptance tests
 
 `tests/test_trial_trim.py` — click refused by default, click gate opens with
 the switch, GUI transport gone, RDP transport present, server imports.
+`tests/test_credssp_spki_fix.py` — the CredSSP SPKI shim (change 6):
+extraction equals the fixture cert's SPKI DER, longer than the raw key,
+switch default and client selection.
 Run: `python -m unittest discover -s tests -v` with the light deps installed.
 
 ## Upstream pulls
