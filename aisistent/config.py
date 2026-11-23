@@ -47,12 +47,17 @@ class Settings:
         ).strip().lower() in ("1", "true", "yes", "on")
 
         # Fork compatibility shim (FORK.md change 6): simple-rdp 0.8.10's
-        # CredSSP pubKeyAuth uses the raw public key, but CredSSP v5+
-        # defines it over the full SubjectPublicKeyInfo DER, and
-        # GNOME/FreeRDP rejects the raw-key proof. The shim is ON unless
-        # explicitly disabled with AISISTENT_CREDSSP_SPKI_FIX=0.
+        # CredSSP pubKeyAuth feeds the hash the RAW public key. CredSSP
+        # v5+ defines it over the full SubjectPublicKeyInfo DER, and the
+        # shim class can supply that form — but measured against Yggi's
+        # GNOME/FreeRDP server (2026-11-23), the RAW form is what that
+        # server verifies: with the shim ON the server logged "Could
+        # not verify server's hash"; with it OFF, authentication
+        # completed. Default is therefore OFF (stock behavior); set
+        # AISISTENT_CREDSSP_SPKI_FIX=1 only for a server that rejects
+        # the raw-key proof (spec-strict servers, e.g. Windows).
         self.credssp_spki_fix: bool = os.getenv(
-            "AISISTENT_CREDSSP_SPKI_FIX", "1"
+            "AISISTENT_CREDSSP_SPKI_FIX", "0"
         ).strip().lower() not in ("0", "false", "no", "off")
 
         # Override from env

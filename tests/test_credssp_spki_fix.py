@@ -77,16 +77,16 @@ class TestSpkiSwitch(unittest.TestCase):
     def tearDown(self):
         settings.credssp_spki_fix = self._saved
 
-    def test_switch_defaults_on(self):
+    def test_switch_defaults_off(self):
         with mock.patch.dict(os.environ):
             os.environ.pop("AISISTENT_CREDSSP_SPKI_FIX", None)
-            self.assertTrue(Settings().credssp_spki_fix)
-
-    def test_switch_explicit_off(self):
-        with mock.patch.dict(
-            os.environ, {"AISISTENT_CREDSSP_SPKI_FIX": "0"}
-        ):
             self.assertFalse(Settings().credssp_spki_fix)
+
+    def test_switch_explicit_on(self):
+        with mock.patch.dict(
+            os.environ, {"AISISTENT_CREDSSP_SPKI_FIX": "1"}
+        ):
+            self.assertTrue(Settings().credssp_spki_fix)
 
     @unittest.skipUnless(rdp_mod._HAS_SIMPLE_RDP, "simple-rdp not installed")
     def test_transport_client_selection_follows_switch(self):

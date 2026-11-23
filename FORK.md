@@ -53,29 +53,38 @@ vulnerabilities).
    tests prove the connect path only. The cross-loop question is settled
    at deployment, by the first real connect + capture against a live
    RDP server, read-only, before any reliance.
-6. **CredSSP SPKI shim** (2026-11-23). The first real connect against
-   Yggi's GNOME Remote Desktop failed with "CredSSP public key
-   verification failed" — measured, not guessed: the diagnostic run
-   (job dd91740caed7, dummy credentials, debug logging) showed the
-   server negotiates CredSSP version 6, the client runs the v5+
-   hash-based pubKeyAuth, and the public key it feeds that hash is
-   **270 bytes**. Root cause, read in simple-rdp 0.8.10's own source:
-   `RDPClient._extract_public_key_from_cert` returns the RAW public
-   key contents, but CredSSP v5+ pubKeyAuth is defined over the full
-   **SubjectPublicKeyInfo DER (294 bytes** for Yggi's RSA-2048 cert).
-   The server verifies the client's proof, gets a mismatch, and
-   answers with an error code at the pubKeyAuth step — before
-   credentials are ever sent, so the password was never implicated.
-   Fix: `aisistent/transport/rdp.py` defines `CredsspSpkiRDPClient`, a
-   subclass overriding that one method to return
-   `subject_public_key_info.dump()` (the complete SPKI DER), and
-   `RDPTransport` connects with it. `asn1crypto` needed no new
-   dependency entry: it is already a direct dependency of
-   simple-rdp 0.8.10 itself (`Requires-Dist: asn1crypto>=1.5.1`), and
-   it is the same library upstream's broken method uses.
-   Switch: `AISISTENT_CREDSSP_SPKI_FIX`, default **ON** (the library
-   is broken without it); `=0` (or false/no/off) selects the stock
-   upstream client class cleanly.
+6. **CredSSP key-form switch** (2026-11-23). Getting a first real
+   connect against Yggi's GNOME Remote Desktop took three measured
+   corrections, recorded here so nobody re-walks them:
+   (a) The first failures were NOT the key at all: the daemon's
+   remote-login credential store (`grdctl --system rdp
+   set-credentials`) had no entry for the connecting user, so the
+   server failed NTLM with SEC_E_NO_CREDENTIALS ("Could not find user
+   in SAM database", daemon journal). simple-rdp labels any error at
+   that stage "public key verification failed", which misled the
+   first diagnosis. Registering the dedicated rdp-ai user with the
+   daemon fixed that leg.
+   (b) With NTLM passing, the pubKeyAuth hash check failed
+   server-side ("Could not verify server's hash"). The SPKI theory —
+   CredSSP v5+ defines the hash over the full SubjectPublicKeyInfo
+   DER (294 bytes for this cert) while simple-rdp extracts the RAW
+   key (270) — was implemented as the shim below and measured WRONG
+   for this server: the shim's output is byte-identical to the
+   presented cert's SPKI (verified by a direct TLS probe), yet the
+   server still rejected it, and with the shim OFF (raw key)
+   authentication COMPLETED end to end. This GNOME/FreeRDP build
+   verifies the hash over the raw key.
+   (c) What the shim is now: `aisistent/transport/rdp.py` defines
+   `CredsspSpkiRDPClient`, a subclass overriding
+   `_extract_public_key_from_cert` to return
+   `subject_public_key_info.dump()` (the complete SPKI DER), selected
+   only when the switch is ON. `asn1crypto` needed no new dependency
+   entry: it is already a direct dependency of simple-rdp 0.8.10
+   itself (`Requires-Dist: asn1crypto>=1.5.1`).
+   Switch: `AISISTENT_CREDSSP_SPKI_FIX`, default **OFF** (stock
+   raw-key behavior — what Yggi's server accepts); `=1` selects the
+   SPKI form for a server that rejects the raw-key proof
+   (spec-strict servers, e.g. Windows).
    PIN DISCIPLINE: the shim overrides a PRIVATE method of
    simple-rdp==0.8.10. It is locked to that exact pin — on any
    simple-rdp version bump, re-verify the private method still exists
@@ -84,15 +93,20 @@ vulnerabilities).
    Tests: `tests/test_credssp_spki_fix.py` against a committed
    throwaway RSA-2048 fixture cert (`tests/fixtures/test_cert.der`) —
    shim output equals the SPKI DER exactly, 294 vs 270 bytes, switch
-   default/selection proven.
+   default (off) and explicit-on selection proven.
+   Post-auth note: with authentication passing, the connect reached
+   the graphics phase and the GNOME daemon closed it: "Client did
+   not advertise support for the Graphics Pipeline" — g-r-d requires
+   MS-RDPEGFX, which simple-rdp does not implement. That gap is a
+   server-choice question, not something this fork patches.
 
 ## Acceptance tests
 
 `tests/test_trial_trim.py` — click refused by default, click gate opens with
 the switch, GUI transport gone, RDP transport present, server imports.
-`tests/test_credssp_spki_fix.py` — the CredSSP SPKI shim (change 6):
+`tests/test_credssp_spki_fix.py` — the CredSSP key-form switch (change 6):
 extraction equals the fixture cert's SPKI DER, longer than the raw key,
-switch default and client selection.
+switch default (off) and client selection.
 Run: `python -m unittest discover -s tests -v` with the light deps installed.
 
 ## Upstream pulls
