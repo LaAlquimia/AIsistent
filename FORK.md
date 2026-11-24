@@ -303,6 +303,26 @@ vulnerabilities).
   the mostly-black bar test. Suite: 68 tests, green locally
   and on Yggi.
 
+## Change 14 — the connect poll wakes a blank session and keeps the evidence (2026-11-23)
+
+Acceptance run 3 timed out at connect against a session that
+was provably healthy (its Xvnc, window manager, terminal, and
+the browser the previous run had opened were all still alive)
+— the poll simply never saw a passing frame, and the timeout
+kept no picture of what the client was showing. Two changes:
+
+- **The wake nudge.** If every frame so far is blank
+  (<0.1% non-black — a blanked screen saver or an unpainted
+  framebuffer, a state distinct from failing the render bar),
+  the poll moves the pointer once, halfway through the
+  window. A person connecting moves the mouse; a blanked
+  display repaints on activity. Dialog frames and dark
+  desktops are not blank and are never nudged.
+- **The evidence frame.** On a connect timeout, the last
+  poll frame is saved as `connect-timeout.png` in the temp
+  captures directory and named in the error, so the next
+  failure is a picture, not a theory.
+
 ## Acceptance tests
 
 `tests/test_trial_trim.py` — click refused by default, click gate opens with

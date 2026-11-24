@@ -20,6 +20,7 @@ from io import BytesIO
 from ..config import settings
 from .base import Transport
 from .display_bridge import XlibDisplayBridge
+from .frame_check import frame_is_blank as _frame_is_blank
 from .frame_check import frame_passes as _frame_passes
 from .frame_check import looks_like_login_dialog as _looks_like_login_dialog
 
@@ -125,8 +126,12 @@ class FreeRDPTransport(Transport):
 
     def _await_render(self, bridge) -> None:
         deadline = time.time() + settings.connect_timeout_s
+        half = time.time() + settings.connect_timeout_s / 2
         focused = False
         saw_dialog = False
+        nudged = False
+        all_blank = True
+        last_frame = None
         while time.time() < deadline:
             if not bridge.client_alive(self._pid):
                 raise RuntimeError(
@@ -141,6 +146,9 @@ class FreeRDPTransport(Transport):
                 except Exception:
                     pass  # window not up yet; the render poll waits
             frame = bridge.grab_frame()
+            last_frame = frame
+            if not _frame_is_blank(frame):
+                all_blank = False
             if _looks_like_login_dialog(frame):
                 # The render bar alone cannot tell the server's
                 # login screen from a desktop — the 2026-11-23
@@ -154,19 +162,50 @@ class FreeRDPTransport(Transport):
                 # the configured size.
                 self._width, self._height = frame.size
                 return
+            if all_blank and not nudged and time.time() > half:
+                # A blanked screen saver / unpainted framebuffer
+                # only repaints on activity; a person connecting
+                # moves the mouse. One nudge, halfway through
+                # the window, blank frames only (change 14 —
+                # the 2026-11-23 re-run timed out on a healthy
+                # session that never painted for the poll).
+                try:
+                    bridge.pointer_move(
+                        frame.width // 2, frame.height // 2)
+                except Exception:
+                    pass
+                nudged = True
             time.sleep(self._poll_s)
+        note = self._save_timeout_frame(last_frame)
         if saw_dialog:
             raise RuntimeError(
                 "Connect failed: the server is still showing its "
                 "login screen — the credentials were rejected or "
-                "never reached it. No session was started."
+                "never reached it. No session was started." + note
             )
         raise RuntimeError(
             "Connect timed out: no rendered desktop within "
             f"{settings.connect_timeout_s:.0f}s. If the credentials "
             "were rejected, this timeout is how that surfaces on "
-            "this path (plan G8)."
+            "this path (plan G8)." + note
         )
+
+    def _save_timeout_frame(self, frame) -> str:
+        """Keep the last poll frame as evidence (change 14).
+
+        A connect timeout without a picture is a guessing game;
+        the saved frame shows whether the client sat on a login
+        screen, a black framebuffer, or something unanticipated.
+        """
+        if frame is None:
+            return ""
+        try:
+            settings.temp_dir.mkdir(parents=True, exist_ok=True)
+            path = settings.temp_dir / "connect-timeout.png"
+            frame.save(str(path), format="PNG")
+            return f" Last frame saved to {path}."
+        except Exception:
+            return ""
 
     def _cleanup(self) -> None:
         if self._bridge is not None:

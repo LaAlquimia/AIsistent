@@ -282,6 +282,43 @@ class TestFreeRDPConnect(unittest.TestCase):
         finally:
             settings.connect_timeout_s = saved
 
+    def test_blank_session_wakes_on_nudge(self):
+        # Change 14: a blanked / unpainted session repaints on
+        # activity. The bridge serves black until the pointer
+        # moves, then a passing desktop frame.
+        class WakeBridge(FakeBridge):
+            def grab_frame(self):
+                if self.pointer_calls:
+                    return _passing_frame()
+                return _black_frame()
+
+        bridge = WakeBridge()
+        t = FreeRDPTransport(bridge=bridge)
+        t._poll_s = 0.05
+        saved = settings.connect_timeout_s
+        settings.connect_timeout_s = 2.0
+        try:
+            t.connect(**_creds())
+        finally:
+            settings.connect_timeout_s = saved
+        self.assertTrue(t.is_connected)
+        self.assertTrue(
+            any(c[0] == "move" for c in bridge.pointer_calls))
+
+    def test_persistent_blank_timeout_saves_last_frame(self):
+        # Change 14: a connect timeout keeps the last frame as
+        # evidence and names it in the error.
+        self.bridge.frame = _black_frame()
+        self.t._poll_s = 0.05
+        saved = settings.connect_timeout_s
+        settings.connect_timeout_s = 0.3
+        try:
+            with self.assertRaises(RuntimeError) as cm:
+                self.t.connect(**_creds())
+        finally:
+            settings.connect_timeout_s = saved
+        self.assertIn("connect-timeout.png", str(cm.exception))
+
 
 class TestFreeRDPClick(unittest.TestCase):
     def setUp(self):

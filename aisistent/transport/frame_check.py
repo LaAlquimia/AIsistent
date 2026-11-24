@@ -28,6 +28,20 @@ def frame_passes(img) -> bool:
     return nonblack / total > _RENDER_MIN_NONBLACK
 
 
+def frame_is_blank(img) -> bool:
+    """Essentially nothing on screen (<0.1% non-black).
+
+    Distinct from failing the render bar: a login dialog or a
+    dark desktop fails the bar without being blank. Blank is
+    the screen-saver / not-yet-painting state, and the only
+    state the connect poll nudges (change 14).
+    """
+    rgb = img.convert("RGB")
+    total = rgb.width * rgb.height
+    nonblack = total - _counts(rgb).get((0, 0, 0), 0)
+    return nonblack / total < 0.001
+
+
 def looks_like_login_dialog(img) -> bool:
     """The xrdp login screen's measured signature (change 13).
 
