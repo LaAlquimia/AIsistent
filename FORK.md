@@ -323,6 +323,66 @@ kept no picture of what the client was showing. Two changes:
   captures directory and named in the error, so the next
   failure is a picture, not a theory.
 
+## The FreeRDP transport (accepted live, 2026-11-23)
+
+Why it exists: the legacy backend's client library cannot
+render what current servers send — it implements no graphics
+pipeline extension, and on the trial host every session type
+offered (composited, offscreen-blitted, server-rendered)
+measured black or pointer-only through it, while the standard
+FreeRDP client rendered the same session completely. The fork
+therefore drives xfreerdp itself.
+
+Shape: `FreeRDPTransport` spawns xfreerdp as a subprocess on a
+private Xvfb display owned by `XlibDisplayBridge` — the only
+module that talks X. Capture is a root-window GetImage; input
+is XTEST, with codepoint-based key mapping (shifted levels and
+donor-keycode remapping for unmapped keysyms, both measured in
+the slice-0 spike). One connection at a time; a second connect
+is refused, not queued.
+
+Connect honesty: connect returns only after a grabbed frame
+passes the render bar (>5% non-black, >50 distinct colors)
+AND is not the server's login dialog, whose measured signature
+the guard matches explicitly. A session that stays blank gets
+one pointer nudge (blanked displays repaint on activity); a
+timeout saves its last frame as evidence and names the path.
+
+Switches (all in `aisistent/config.py`, defined once):
+`AISISTENT_TRANSPORT` selects the backend — `freerdp` is the
+default since change 15; `simple` keeps the legacy backend.
+Session size, display choice, and timeouts sit beside it.
+Clipboard redirection is off unless `AISISTENT_CLIPBOARD=on`.
+Clicks and keyboard stay behind their gates
+(`AISISTENT_ALLOW_CLICK`, `AISISTENT_ALLOW_KEYBOARD`), each
+enforced in the action layer and backstopped in the transport.
+
+Credentials reach the client as the /p argument (change 13).
+That exposes them to the local process listing for the
+client's lifetime — accepted for a localhost connection to a
+disposable, scoped account, and flagged here for revisiting
+before any non-trial use. They are never placed in the child's
+environment and never logged; audit logs record payload
+lengths, not content.
+
+Sessions: disconnect ends the client and the virtual display
+only. The server-side desktop session persists and the next
+connect reattaches to it (known gap G1: no tool ends a
+server-side session).
+
+Live acceptance (2026-11-23, the plan's T5–T10): all eight
+live tests passed against a real xrdp/Xvnc host — rendered
+desktop measured from the frame itself, typed commands proven
+by their files on disk, both gates proven shut, the session
+reattached with identical process IDs, and a browser opened
+on a planted page through the tools alone.
+
+## Change 15 — the default flips to FreeRDP (2026-11-23)
+
+Slice 3's closing commit, on the passed acceptance above:
+`AISISTENT_TRANSPORT` now defaults to `freerdp`. The legacy
+backend remains available behind the switch, unchanged.
+
 ## Acceptance tests
 
 `tests/test_trial_trim.py` — click refused by default, click gate opens with

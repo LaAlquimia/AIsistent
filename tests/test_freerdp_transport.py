@@ -177,13 +177,16 @@ class TestConfigParsing(unittest.TestCase):
         with mock.patch.dict(os.environ, env, clear=False):
             return Settings()
 
-    def test_transport_default_simple(self):
+    def test_transport_default_freerdp(self):
+        # Flipped by slice 3's live acceptance (2026-11-23).
         with mock.patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(Settings().transport, "simple")
+            self.assertEqual(Settings().transport, "freerdp")
 
     def test_transport_env(self):
         s = self._settings({"AISISTENT_TRANSPORT": "freerdp"})
         self.assertEqual(s.transport, "freerdp")
+        s = self._settings({"AISISTENT_TRANSPORT": "simple"})
+        self.assertEqual(s.transport, "simple")
 
     def test_session_size_env(self):
         s = self._settings({

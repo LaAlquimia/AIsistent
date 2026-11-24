@@ -80,11 +80,12 @@ class Settings:
 
         # FreeRDP transport build (FREERDP-TRANSPORT-PLAN.md):
         # every changeable value for the new backend, defined once
-        # here. The transport switch defaults to the legacy backend
-        # until slice 3's live acceptance flips it.
+        # here. The transport switch defaulted to the legacy
+        # backend until slice 3's live acceptance passed
+        # (2026-11-23) and flipped it to FreeRDP.
         self.transport: str = (
-            os.getenv("AISISTENT_TRANSPORT", "simple").strip().lower()
-            or "simple"
+            os.getenv("AISISTENT_TRANSPORT", "freerdp").strip().lower()
+            or "freerdp"
         )
         # Session size: applied when a fresh session is created;
         # connect adopts the ACTUAL frame geometry when a
