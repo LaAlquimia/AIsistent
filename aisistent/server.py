@@ -11,7 +11,7 @@ from .platform import CURRENT_OS, CURRENT_DEVICE
 from .capture import capture_screen
 from .ocr import run_ocr
 from .detection import detect_buttons
-from .action import inject_click
+from .action import inject_click, send_key, type_text
 from .transport import get_transport, set_transport, create_transport, current_transport
 
 logger = logging.getLogger(__name__)
@@ -72,11 +72,8 @@ def connect_rdp(
     """Connect to a remote machine via headless RDP.
 
     The backend is chosen by the AISISTENT_TRANSPORT switch
-    (simple = legacy protocol client, freerdp = the standard
-    FreeRDP client on a private virtual display).
-
-    Once connected, capture_rdp_screen and inject_rdp_click use this
-    RDP session.
+    (simple | freerdp). Once connected, capture_rdp_screen and
+    inject_rdp_click use this RDP session.
 
     Credentials can be passed as arguments or set via RDP_HOST, RDP_USER,
     RDP_PASS env vars. Args take precedence over env vars. Port: the
@@ -111,11 +108,7 @@ def connect_rdp(
 
 @mcp.tool()
 def disconnect_rdp() -> str:
-    """Disconnect the headless RDP session.
-
-    Fork note: upstream fell back to a local-window transport here; this
-    fork is RDP-only, so disconnect simply tears the RDP session down.
-    """
+    """Disconnect the headless RDP session (tears the transport down)."""
     with _transport_lock:
         try:
             transport = current_transport()
@@ -202,6 +195,42 @@ def inject_rdp_click(x_percent: float, y_percent: float) -> str:
             return json.dumps(result)
         except Exception as e:
             logger.exception("inject_rdp_click failed")
+            return json.dumps({"status": "error", "message": str(e)})
+
+
+@mcp.tool()
+def send_rdp_key(key: str) -> str:
+    """Send one key or chord to the RDP session (e.g. "Return", "ctrl+l").
+
+    Vocabulary: X keysym names (Return, Tab, Escape, BackSpace,
+    space, F1-F12), printable characters as themselves, chords
+    with ctrl/alt/shift/super joined by '+'. Unknown names are
+    refused by name. Gated like clicks (AISISTENT_ALLOW_KEYBOARD=1);
+    by default the call is refused and nothing is sent.
+    """
+    with _transport_lock:
+        try:
+            result = send_key(key)
+            return json.dumps(result)
+        except Exception as e:
+            logger.exception("send_rdp_key failed")
+            return json.dumps({"status": "error", "message": str(e)})
+
+
+@mcp.tool()
+def type_rdp_text(text: str) -> str:
+    """Type literal text into the RDP session (max 4096 characters).
+
+    Gated like clicks (AISISTENT_ALLOW_KEYBOARD=1); by default the
+    call is refused and nothing is sent. The result reports the
+    character count only, never the typed content.
+    """
+    with _transport_lock:
+        try:
+            result = type_text(text)
+            return json.dumps(result)
+        except Exception as e:
+            logger.exception("type_rdp_text failed")
             return json.dumps({"status": "error", "message": str(e)})
 
 

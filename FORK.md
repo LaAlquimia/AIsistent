@@ -237,6 +237,29 @@ vulnerabilities).
   parsing, keymap rules). Suite: 55 tests, green locally.
   Keyboard tools are slice 2; live acceptance is slice 3.
 
+## Change 12 — keyboard on the surface, gated like clicks (2026-11-23)
+
+- Two new tools: send_rdp_key and type_rdp_text (nine tools
+  total). Andrew's stamp: "Gate the keyboard like clicks" —
+  AISISTENT_ALLOW_KEYBOARD, default off, whitelist-parsed,
+  enforced in action.py AND backstopped in both transports.
+- The Transport ABC gains send_key/type_text. FreeRDP routes
+  through the display bridge; the legacy backend translates
+  the surface vocabulary (X keysym names + '+' chords) into
+  simple-rdp's names and hold/release chord steps
+  (transport/legacy_keys.py, pure and unit-tested). The
+  legacy client classes moved to transport/legacy_client.py
+  to hold the line cap; rdp.py re-exports their names.
+- Audit hygiene: type results and logs carry the character
+  count only, never the typed content. Surface cap: 4096
+  characters per type call.
+- Tests: tests/test_keyboard_tools.py (10 tests — action
+  gate, exact payloads, unknown-key refusal, no content echo,
+  both backstops, the legacy translation). The migration
+  test's expected set grows to nine tools. Suite: 65 tests,
+  green locally (the test venv's installed copy was refreshed
+  — the stdio protocol test exercises the installed package).
+
 ## Acceptance tests
 
 `tests/test_trial_trim.py` — click refused by default, click gate opens with
@@ -263,6 +286,10 @@ cleaned up and the raw socket closed; every other error propagates.
 bridge pointer calls, percent→pixel mapping, the stdin
 credential route (never argv), render-bar failure cleanup,
 config parsing, and the keymap rules.
+`tests/test_keyboard_tools.py` — the keyboard surface
+(change 12): action-layer gate, exact payload delivery,
+unknown-key refusal, no content echo in results, both
+transport backstops, and the legacy key-plan translation.
 Run: `python -m unittest discover -s tests -v` in a venv built with the
 `rdp` extra (`pip install ".[rdp]"`). With only the light core deps
 installed, the simple-rdp-dependent tests skip instead of passing, and

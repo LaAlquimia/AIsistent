@@ -1,7 +1,7 @@
 """Acceptance tests for the mcp 2.x migration (see MIGRATION-BRIEF.md).
 
 T0/T1: the environment carries exactly mcp 2.3.0 (the fork's pin) and
-       the server registers exactly the seven expected tools.
+       the server registers exactly the nine expected tools.
 T2:    a live stdio JSON-RPC session against the server launched bare
        (`python -m aisistent`, no arguments) — initialize, tools/list,
        the click refusal, a refused connect_rdp, and proof the server
@@ -41,6 +41,8 @@ EXPECTED_TOOLS = {
     "run_apple_ocr",
     "detect_rdp_buttons",
     "inject_rdp_click",
+    "send_rdp_key",
+    "type_rdp_text",
 }
 
 STEP_TIMEOUT = 15  # seconds, per JSON-RPC step (brief T2)
@@ -60,7 +62,7 @@ class TestSdkVersionAndRegistration(unittest.TestCase):
     def test_simple_rdp_version_is_the_pin(self):
         self.assertEqual(importlib.metadata.version("simple-rdp"), "0.8.10")
 
-    def test_seven_tools_registered(self):
+    def test_nine_tools_registered(self):
         import aisistent.server as srv
 
         tools = asyncio.run(srv.mcp.list_tools())

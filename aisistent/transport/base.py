@@ -17,3 +17,11 @@ class Transport(ABC):
     @abstractmethod
     def click(self, x_percent: float, y_percent: float) -> dict:
         ...
+
+    @abstractmethod
+    def send_key(self, key: str) -> dict:
+        ...
+
+    @abstractmethod
+    def type_text(self, text: str) -> dict:
+        ...

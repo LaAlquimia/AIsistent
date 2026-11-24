@@ -235,3 +235,40 @@ class FreeRDPTransport(Transport):
             "status": "success",
             "action": f"Clicked RDP coordinates: ({click_x}, {click_y})",
         }
+
+    def send_key(self, key: str) -> dict:
+        # Keyboard backstop, same pattern as the click backstop
+        # (Andrew's stamp: gate the keyboard like clicks).
+        if not settings.allow_keyboard:
+            return {
+                "status": "error",
+                "message": (
+                    "Keyboard input is disabled in this fork "
+                    "(AISISTENT_ALLOW_KEYBOARD is off). "
+                    "Read-only mode."
+                ),
+            }
+        self._require_live()
+        self._bridge.key(key)
+        logger.info("FreeRDP key sent: %s", key)
+        return {"status": "success", "action": f"Sent key: {key}"}
+
+    def type_text(self, text: str) -> dict:
+        if not settings.allow_keyboard:
+            return {
+                "status": "error",
+                "message": (
+                    "Keyboard input is disabled in this fork "
+                    "(AISISTENT_ALLOW_KEYBOARD is off). "
+                    "Read-only mode."
+                ),
+            }
+        self._require_live()
+        self._bridge.type_text(text)
+        # Length only in the result and the log — never the
+        # typed content (plan G15).
+        logger.info("FreeRDP typed %d characters", len(text))
+        return {
+            "status": "success",
+            "action": f"Typed {len(text)} characters",
+        }
