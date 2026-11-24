@@ -4,12 +4,8 @@ The standard FreeRDP client renders the session into an Xvfb
 display owned by the display bridge; capture and input go
 through that display (FREERDP-TRANSPORT-PLAN.md). Credentials
 reach the client as the /p argument — the plan's O1 fallback,
-taken after the /from-stdin route was measured not to deliver
-(change 13): with stdin feeding, xfreerdp reached the server's
-login screen but never filled it. The exposure is the proof's
-(process listing, localhost, disposable account), accepted in
-the plan for the trial and flagged for revisit before any
-non-trial use. Never in the child's environment, never logged.
+taken after /from-stdin was measured not to deliver (FORK.md
+change 13). Never in the child's environment, never logged.
 """
 
 import base64
@@ -58,8 +54,8 @@ class FreeRDPTransport(Transport):
 
     def connect(self, **kwargs) -> None:
         if self._pid is not None:
-            # Single-operator policy (plan G6): one connection at
-            # a time; a second connect spawns nothing.
+            # Single-operator policy (plan G6): one connection
+            # at a time; a second connect spawns nothing.
             raise RuntimeError(
                 "Already connected. Disconnect before reconnecting."
             )
@@ -87,9 +83,9 @@ class FreeRDPTransport(Transport):
             )
         self._width, self._height = width, height
 
-        # Binding argv (plan G5): localhost endpoint, self-signed
-        # cert ignored, no device/drive/clipboard redirection
-        # unless the clipboard switch is on, audio off.
+        # Binding argv (plan G5): localhost endpoint, cert
+        # ignored, no redirection unless the clipboard switch
+        # is on, audio off.
         argv = [
             "xfreerdp",
             f"/v:{host}:{port}",
@@ -150,25 +146,20 @@ class FreeRDPTransport(Transport):
             if not _frame_is_blank(frame):
                 all_blank = False
             if _looks_like_login_dialog(frame):
-                # The render bar alone cannot tell the server's
-                # login screen from a desktop — the 2026-11-23
-                # acceptance run "connected" onto the login
-                # screen and every later step failed. A connect
-                # counts only once the dialog clears (change 13).
+                # The render bar cannot tell the login screen
+                # from a desktop (change 13): a connect counts
+                # only once the dialog clears.
                 saw_dialog = True
             elif _frame_passes(frame):
                 # Adopt the ACTUAL geometry (plan G10): a
-                # reattached persistent session may differ from
-                # the configured size.
+                # reattached session may differ in size.
                 self._width, self._height = frame.size
                 return
             if all_blank and not nudged and time.time() > half:
                 # A blanked screen saver / unpainted framebuffer
-                # only repaints on activity; a person connecting
-                # moves the mouse. One nudge, halfway through
-                # the window, blank frames only (change 14 —
-                # the 2026-11-23 re-run timed out on a healthy
-                # session that never painted for the poll).
+                # repaints on activity; a person connecting moves
+                # the mouse. One nudge, blank frames only
+                # (change 14).
                 try:
                     bridge.pointer_move(
                         frame.width // 2, frame.height // 2)
@@ -191,12 +182,8 @@ class FreeRDPTransport(Transport):
         )
 
     def _save_timeout_frame(self, frame) -> str:
-        """Keep the last poll frame as evidence (change 14).
-
-        A connect timeout without a picture is a guessing game;
-        the saved frame shows whether the client sat on a login
-        screen, a black framebuffer, or something unanticipated.
-        """
+        """Keep the last poll frame as evidence (change 14):
+        a timeout without a picture is a guessing game."""
         if frame is None:
             return ""
         try:
@@ -221,9 +208,8 @@ class FreeRDPTransport(Transport):
         self._pid = None
 
     def disconnect(self) -> None:
-        # Ends the client and the virtual display. It does NOT
-        # end the server-side desktop session (plan gap G1):
-        # the session persists and the next connect reattaches.
+        # Ends the client and display, NOT the server-side
+        # session (plan gap G1): it persists and reattaches.
         self._cleanup()
         logger.info("FreeRDPTransport: disconnected")
 
@@ -251,9 +237,8 @@ class FreeRDPTransport(Transport):
         return duration, b64
 
     def click(self, x_percent: float, y_percent: float) -> dict:
-        # Backstop for the fork's click gate, same as the legacy
-        # transport: action.py is the primary gate, but no
-        # internal caller can bypass the switch through here.
+        # Click-gate backstop: action.py is the primary gate,
+        # but no caller can bypass the switch through here.
         if not settings.allow_click:
             return {
                 "status": "error",
@@ -276,8 +261,7 @@ class FreeRDPTransport(Transport):
         }
 
     def send_key(self, key: str) -> dict:
-        # Keyboard backstop, same pattern as the click backstop
-        # (Andrew's stamp: gate the keyboard like clicks).
+        # Keyboard backstop (gate the keyboard like clicks).
         if not settings.allow_keyboard:
             return {
                 "status": "error",
@@ -304,8 +288,7 @@ class FreeRDPTransport(Transport):
             }
         self._require_live()
         self._bridge.type_text(text)
-        # Length only in the result and the log — never the
-        # typed content (plan G15).
+        # Length only in result and log, never content (G15).
         logger.info("FreeRDP typed %d characters", len(text))
         return {
             "status": "success",

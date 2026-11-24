@@ -7,10 +7,10 @@ T2: click gate backstop — with clicks off, click() returns the
 T3: percent→pixel mapping at corners and center for the actual
     (adopted) session geometry.
 
-Plus the slice-1 contracts around them: credentials travel by
-stdin only (never argv), a frame that never passes the render
-bar fails the connect AND cleans up, and a second connect while
-connected spawns nothing.
+Plus the slice-1 contracts around them: credentials travel
+in argv (change 13), and a second connect while connected
+spawns nothing. The connect-poll tests (render bar, login
+dialog, wake nudge) live in test_freerdp_connect.py.
 """
 
 import os
@@ -231,94 +231,6 @@ class TestFreeRDPConnect(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.t.connect(**_creds())
         self.assertEqual(self.bridge.spawn_count, 1)
-
-    def test_black_frame_fails_and_cleans_up(self):
-        import aisistent.transport.freerdp as fr
-        self.bridge.frame = _black_frame()
-        self.t._poll_s = 0.05
-        saved = settings.connect_timeout_s
-        settings.connect_timeout_s = 0.3
-        try:
-            with self.assertRaises(RuntimeError):
-                self.t.connect(**_creds())
-        finally:
-            settings.connect_timeout_s = saved
-        self.assertEqual(self.bridge.killed, [4242])
-        self.assertTrue(self.bridge.stopped)
-        self.assertFalse(self.t.is_connected)
-        _ = fr  # module referenced for its poll constant seam
-
-    def test_login_dialog_never_counts_as_connected(self):
-        # Change 13 regression: the render bar alone passed on
-        # the login screen during the 2026-11-23 acceptance run.
-        self.bridge.frame = _dialog_frame()
-        self.t._poll_s = 0.05
-        saved = settings.connect_timeout_s
-        settings.connect_timeout_s = 0.3
-        try:
-            with self.assertRaises(RuntimeError) as cm:
-                self.t.connect(**_creds())
-        finally:
-            settings.connect_timeout_s = saved
-        self.assertIn("login screen", str(cm.exception))
-        self.assertEqual(self.bridge.killed, [4242])
-        self.assertTrue(self.bridge.stopped)
-
-    def test_dialog_then_desktop_connects(self):
-        bridge = QueueBridge([_dialog_frame(), _passing_frame()])
-        t = FreeRDPTransport(bridge=bridge)
-        t._poll_s = 0.05
-        t.connect(**_creds())
-        self.assertTrue(t.is_connected)
-
-    def test_mostly_black_frame_fails_the_bar(self):
-        self.bridge.frame = _mostly_black_frame()
-        self.t._poll_s = 0.05
-        saved = settings.connect_timeout_s
-        settings.connect_timeout_s = 0.3
-        try:
-            with self.assertRaises(RuntimeError):
-                self.t.connect(**_creds())
-        finally:
-            settings.connect_timeout_s = saved
-
-    def test_blank_session_wakes_on_nudge(self):
-        # Change 14: a blanked / unpainted session repaints on
-        # activity. The bridge serves black until the pointer
-        # moves, then a passing desktop frame.
-        class WakeBridge(FakeBridge):
-            def grab_frame(self):
-                if self.pointer_calls:
-                    return _passing_frame()
-                return _black_frame()
-
-        bridge = WakeBridge()
-        t = FreeRDPTransport(bridge=bridge)
-        t._poll_s = 0.05
-        saved = settings.connect_timeout_s
-        settings.connect_timeout_s = 2.0
-        try:
-            t.connect(**_creds())
-        finally:
-            settings.connect_timeout_s = saved
-        self.assertTrue(t.is_connected)
-        self.assertTrue(
-            any(c[0] == "move" for c in bridge.pointer_calls))
-
-    def test_persistent_blank_timeout_saves_last_frame(self):
-        # Change 14: a connect timeout keeps the last frame as
-        # evidence and names it in the error.
-        self.bridge.frame = _black_frame()
-        self.t._poll_s = 0.05
-        saved = settings.connect_timeout_s
-        settings.connect_timeout_s = 0.3
-        try:
-            with self.assertRaises(RuntimeError) as cm:
-                self.t.connect(**_creds())
-        finally:
-            settings.connect_timeout_s = saved
-        self.assertIn("connect-timeout.png", str(cm.exception))
-
 
 class TestFreeRDPClick(unittest.TestCase):
     def setUp(self):
