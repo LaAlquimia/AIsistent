@@ -45,8 +45,17 @@ class TestTrialTrim(unittest.TestCase):
             create_transport("gui")
 
     def test_rdp_transport_available(self):
+        # Default backend is FreeRDP since the slice-3 flip
+        # (change 15); the legacy backend stays selectable.
         t = create_transport("rdp")
-        self.assertEqual(type(t).__name__, "RDPTransport")
+        self.assertEqual(type(t).__name__, "FreeRDPTransport")
+        saved = settings.transport
+        settings.transport = "simple"
+        try:
+            t = create_transport("rdp")
+            self.assertEqual(type(t).__name__, "RDPTransport")
+        finally:
+            settings.transport = saved
 
     def test_server_imports(self):
         import aisistent.server as srv

@@ -12,7 +12,7 @@ _transport: Transport | None = None
 def get_transport() -> Transport:
     global _transport
     if _transport is None:
-        _transport = RDPTransport()
+        _transport = create_transport("rdp")
     return _transport
 
 
@@ -43,8 +43,8 @@ def create_transport(mode: str) -> Transport:
     mode = mode.lower().strip()
     if mode == "rdp":
         # The backend switch (FREERDP-TRANSPORT-PLAN.md): one
-        # definition in config, selected here. Default stays the
-        # legacy backend until slice 3's acceptance flips it.
+        # definition in config, selected here. Default is the
+        # FreeRDP backend since slice 3's acceptance (change 15).
         backend = settings.transport
         if backend == "simple":
             return RDPTransport()
