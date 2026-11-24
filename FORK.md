@@ -207,6 +207,36 @@ vulnerabilities).
   propagates: honest failures stay failures.
 - Tests: tests/test_disconnect_teardown.py (3 tests). Suite: 40 tests.
 
+## Change 11 — FreeRDP transport + display bridge, slice 1 (2026-11-23)
+
+- Why: the trial verdict (TRIAL-VERDICT-2026-11-23.md) — the
+  simple-rdp client cannot render a session on any paint path
+  this box offers, while the standard FreeRDP client rendered
+  the identical session perfectly. Full plan:
+  FREERDP-TRANSPORT-PLAN.md in the trial folder (EGM-reviewed,
+  slice 0 spikes answered there).
+- New backend behind the existing seam: `FreeRDPTransport`
+  drives xfreerdp as a subprocess on a private Xvfb display;
+  `display_bridge.py` is the only module that talks X
+  (python-xlib, pinned in the `rdp` extra); `keymap.py` holds
+  the pure keysym vocabulary. Credentials reach the client on
+  its stdin (/from-stdin) — never argv, never its environment.
+  connect() reports success only after a captured frame passes
+  the proof's render bar, and adopts the frame's actual
+  geometry. Clicks carry the same double gate as the legacy
+  backend. Disconnect ends the client and the display, never
+  the server-side session.
+- The switch: AISISTENT_TRANSPORT (simple | freerdp) in
+  config, selected in create_transport; default stays simple
+  until slice 3's live acceptance flips it. The rest of the
+  config table (session size, display, timeouts, clipboard,
+  the keyboard gate switch) is defined in config.py, once.
+- Tests: tests/test_freerdp_transport.py (15 tests — switch
+  selection T1, gate backstop T2, percent→pixel T3, stdin
+  credential route, render-bar failure cleanup, config
+  parsing, keymap rules). Suite: 55 tests, green locally.
+  Keyboard tools are slice 2; live acceptance is slice 3.
+
 ## Acceptance tests
 
 `tests/test_trial_trim.py` — click refused by default, click gate opens with
@@ -228,6 +258,11 @@ fork client classes emit flags that satisfy it.
 `tests/test_disconnect_teardown.py` — the disconnect fix
 (change 10): the closed-loop artifact is swallowed with state
 cleaned up and the raw socket closed; every other error propagates.
+`tests/test_freerdp_transport.py` — the FreeRDP backend
+(change 11): switch selection, click-gate backstop with zero
+bridge pointer calls, percent→pixel mapping, the stdin
+credential route (never argv), render-bar failure cleanup,
+config parsing, and the keymap rules.
 Run: `python -m unittest discover -s tests -v` in a venv built with the
 `rdp` extra (`pip install ".[rdp]"`). With only the light core deps
 installed, the simple-rdp-dependent tests skip instead of passing, and

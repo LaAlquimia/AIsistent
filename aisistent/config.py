@@ -5,6 +5,26 @@ from pathlib import Path
 from dataclasses import dataclass, field
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
 @dataclass
 class Settings:
     project_root: Path = field(
@@ -56,6 +76,44 @@ class Settings:
         # default) instead of silently flipping behavior.
         self.credssp_spki_fix: bool = (
             os.getenv("AISISTENT_CREDSSP_SPKI_FIX", "").strip() == "1"
+        )
+
+        # FreeRDP transport build (FREERDP-TRANSPORT-PLAN.md):
+        # every changeable value for the new backend, defined once
+        # here. The transport switch defaults to the legacy backend
+        # until slice 3's live acceptance flips it.
+        self.transport: str = (
+            os.getenv("AISISTENT_TRANSPORT", "simple").strip().lower()
+            or "simple"
+        )
+        # Session size: applied when a fresh session is created;
+        # connect adopts the ACTUAL frame geometry when a
+        # persistent session is reattached. Positivity is
+        # validated at connect.
+        self.session_w: int = _env_int("AISISTENT_SESSION_W", 1920)
+        self.session_h: int = _env_int("AISISTENT_SESSION_H", 1080)
+        # Virtual display for the FreeRDP backend: "auto" picks
+        # the first free display in :90-:99, or an explicit number.
+        self.display_spec: str = (
+            os.getenv("AISISTENT_DISPLAY", "auto").strip().lower()
+            or "auto"
+        )
+        self.connect_timeout_s: float = _env_float(
+            "AISISTENT_CONNECT_TIMEOUT_S", 45.0)
+        self.op_timeout_s: float = _env_float(
+            "AISISTENT_OP_TIMEOUT_S", 10.0)
+        # Clipboard redirection stays OFF unless explicitly on.
+        self.clipboard: bool = (
+            os.getenv("AISISTENT_CLIPBOARD", "").strip().lower()
+            == "on"
+        )
+        # Keyboard gate (Andrew's stamp, 2026-11-23: "Gate the
+        # keyboard like clicks") — same whitelist style as the
+        # click switch: only the exact value "1" opens it. The
+        # keyboard tools land in slice 2; the switch is defined
+        # here, once, with the rest of the table.
+        self.allow_keyboard: bool = (
+            os.getenv("AISISTENT_ALLOW_KEYBOARD", "").strip() == "1"
         )
 
         # Override from env

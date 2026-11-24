@@ -1,5 +1,7 @@
 import logging
+from ..config import settings
 from .base import Transport
+from .freerdp import FreeRDPTransport
 from .rdp import RDPTransport
 
 logger = logging.getLogger(__name__)
@@ -40,7 +42,18 @@ def current_transport() -> Transport | None:
 def create_transport(mode: str) -> Transport:
     mode = mode.lower().strip()
     if mode == "rdp":
-        return RDPTransport()
+        # The backend switch (FREERDP-TRANSPORT-PLAN.md): one
+        # definition in config, selected here. Default stays the
+        # legacy backend until slice 3's acceptance flips it.
+        backend = settings.transport
+        if backend == "simple":
+            return RDPTransport()
+        if backend == "freerdp":
+            return FreeRDPTransport()
+        raise ValueError(
+            f"Unknown AISISTENT_TRANSPORT: {backend!r}. "
+            "Use 'simple' or 'freerdp'."
+        )
     elif mode == "gui":
         raise ValueError(
             "GUI transport was removed in this fork. RDP is the only transport."
@@ -52,6 +65,7 @@ def create_transport(mode: str) -> Transport:
 __all__ = [
     "Transport",
     "RDPTransport",
+    "FreeRDPTransport",
     "get_transport",
     "set_transport",
     "current_transport",

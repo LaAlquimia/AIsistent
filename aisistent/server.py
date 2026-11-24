@@ -69,7 +69,11 @@ def connect_rdp(
     height: int = 1080,
     port: int = 0,
 ) -> str:
-    """Connect to a remote machine via headless RDP (simple-rdp).
+    """Connect to a remote machine via headless RDP.
+
+    The backend is chosen by the AISISTENT_TRANSPORT switch
+    (simple = legacy protocol client, freerdp = the standard
+    FreeRDP client on a private virtual display).
 
     Once connected, capture_rdp_screen and inject_rdp_click use this
     RDP session.

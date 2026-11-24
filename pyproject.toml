@@ -51,6 +51,7 @@ detect = [
 rdp = [
   "simple-rdp==0.8.10",
   "asn1crypto==1.5.1",
+  "python-xlib==0.33",
 ]
 all = [
   "easyocr>=1.7",
@@ -59,6 +60,7 @@ all = [
   "ultralytics>=8.0",
   "simple-rdp==0.8.10",
   "asn1crypto==1.5.1",
+  "python-xlib==0.33",
 ]
 
 [project.urls]
