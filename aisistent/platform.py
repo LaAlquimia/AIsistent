@@ -4,7 +4,10 @@ import sys
 import logging
 from enum import Enum
 
-import torch
+try:
+    import torch
+except ImportError:  # fork: torch is an optional `detect` extra
+    torch = None
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,9 @@ def detect_os() -> OSType:
 
 
 def detect_device() -> DeviceType:
+    if torch is None:
+        logger.info("torch not installed, using CPU")
+        return DeviceType.CPU
     if torch.cuda.is_available():
         logger.info("CUDA GPU detected")
         return DeviceType.CUDA

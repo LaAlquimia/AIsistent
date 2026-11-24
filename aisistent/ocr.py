@@ -32,7 +32,7 @@ if CURRENT_OS == OSType.MACOS:
 
         _HAS_APPLE_VISION = True
     except ImportError:
-        logger.warning("pyobjc-framework-Vision not installed. Install with: pip install aistent[apple]")
+        logger.warning("pyobjc-framework-Vision not installed. Install with: pip install aisistent[apple]")
 
     if _HAS_APPLE_VISION:
         def _apple_vision_ocr(image: Image.Image, recognition_level: str = "accurate") -> tuple[list[str], list[list[float]]]:
@@ -143,7 +143,7 @@ def run_ocr(image_bytes: bytes, recognition_level: str = "accurate") -> dict:
     elif _easy_ocr_fn:
         texts, bboxes = _easy_ocr_fn(image)
     else:
-        return {"status": "error", "message": "No OCR backend available. Install: pip install aistent[all]"}
+        return {"status": "error", "message": "No OCR backend available. Install: pip install aisistent[all]"}
 
     duration = time.time() - start
     results = [{"text": t, "bbox": b} for t, b in zip(texts, bboxes)]

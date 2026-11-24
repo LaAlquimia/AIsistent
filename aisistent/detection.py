@@ -32,22 +32,14 @@ def detect_buttons(image_bytes: bytes, conf_threshold: float = 0.25) -> dict:
     if not _has_ultralytics:
         return {
             "status": "error",
-            "message": "ultralytics not installed. Run: pip install aistent[all]",
+            "message": "ultralytics not installed. Run: pip install aisistent[all]",
         }
 
+    # Fork (EGM F16): only the fork's own weights path is consulted.
+    # Upstream silently fell back to weights in sibling projects
+    # outside this tree (self-operating-computer, OmniParser) — code
+    # and models outside the reviewed tree never load in this fork.
     weights = settings.yolo_weights
-    if not weights.exists():
-        # try external self-operating-computer path as fallback
-        from .config import settings as cfg
-
-        alt = cfg.project_root.parent / "self-operating-computer" / "operate" / "models" / "weights" / "best.pt"
-        if alt.exists():
-            weights = alt
-        else:
-            # also check from Desktop (relative to OmniParser)
-            alt2 = cfg.project_root.parent / "OmniParser" / "weights" / "best.pt"
-            if alt2.exists():
-                weights = alt2
 
     if not weights.exists():
         return {

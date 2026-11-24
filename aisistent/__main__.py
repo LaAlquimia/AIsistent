@@ -1,4 +1,4 @@
-"""Entry point: python -m aistent"""
+"""Entry point: python -m aisistent"""
 
 import sys
 
