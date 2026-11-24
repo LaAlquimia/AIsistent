@@ -39,6 +39,35 @@ def _black_frame(w=320, h=240):
     return Image.new("RGB", (w, h), (0, 0, 0))
 
 
+def _mostly_black_frame(w=320, h=240):
+    """Mostly black with >50 distinct colors sprinkled in.
+
+    Pins the render bar's non-black term: a getcolors map read
+    backwards (count and color swapped) once made that term
+    always read 100%, so only the color count was really
+    being tested (change 13).
+    """
+    img = Image.new("RGB", (w, h), (0, 0, 0))
+    px = img.load()
+    for i in range(120):
+        px[i % w, i // w] = (i, (i * 2) % 256, (i * 3) % 256)
+    return img
+
+
+def _dialog_frame(w=320, h=240):
+    """Synthetic xrdp login screen with the measured signature:
+    uniform blue backdrop, white dialog box at the center, and
+    enough distinct colors to pass the render bar on its own."""
+    img = Image.new("RGB", (w, h), (0, 48, 87))
+    px = img.load()
+    for y in range(int(h * 0.35), int(h * 0.65)):
+        for x in range(int(w * 0.4), int(w * 0.6)):
+            px[x, y] = (240, 240, 240)
+    for i in range(120):  # widget/text color variety
+        px[i % w, h - 1 - (i // w)] = (i, (i * 2) % 256, (i * 3) % 256)
+    return img
+
+
 class FakeBridge:
     """Records every call; serves the frame it was handed."""
 
@@ -108,6 +137,19 @@ def _creds():
     }
 
 
+class QueueBridge(FakeBridge):
+    """Serves frames from a queue, then repeats the last one."""
+
+    def __init__(self, frames):
+        super().__init__(frames[0])
+        self._frames = list(frames)
+
+    def grab_frame(self):
+        if len(self._frames) > 1:
+            return self._frames.pop(0)
+        return self._frames[0]
+
+
 class TestSwitchSelection(unittest.TestCase):
     def setUp(self):
         self._saved = settings.transport
@@ -166,16 +208,18 @@ class TestFreeRDPConnect(unittest.TestCase):
     def tearDown(self):
         settings.allow_click = self._saved_click
 
-    def test_credentials_by_stdin_never_argv(self):
+    def test_credentials_in_argv_stdin_route_retired(self):
+        # Change 13: /from-stdin was measured not to deliver
+        # (the client sat at the server's login screen); the
+        # plan's O1 fallback puts the credential in argv as /p.
         self.t.connect(**_creds())
         argv = self.bridge.argv
-        self.assertIn("/from-stdin", argv)
+        self.assertIn("/p:spike-pass", argv)
+        self.assertNotIn("/from-stdin", argv)
         self.assertIn("/cert:ignore", argv)
         self.assertIn("/v:127.0.0.1:3391", argv)
         self.assertIn("-clipboard", argv)
-        self.assertFalse(any("spike-pass" in a for a in argv))
-        self.assertEqual(
-            self.bridge.stdin_text, "rdp-ai\n\nspike-pass\n")
+        self.assertIsNone(self.bridge.stdin_text)
 
     def test_connect_adopts_actual_geometry(self):
         self.t.connect(**_creds())
@@ -203,6 +247,40 @@ class TestFreeRDPConnect(unittest.TestCase):
         self.assertTrue(self.bridge.stopped)
         self.assertFalse(self.t.is_connected)
         _ = fr  # module referenced for its poll constant seam
+
+    def test_login_dialog_never_counts_as_connected(self):
+        # Change 13 regression: the render bar alone passed on
+        # the login screen during the 2026-11-23 acceptance run.
+        self.bridge.frame = _dialog_frame()
+        self.t._poll_s = 0.05
+        saved = settings.connect_timeout_s
+        settings.connect_timeout_s = 0.3
+        try:
+            with self.assertRaises(RuntimeError) as cm:
+                self.t.connect(**_creds())
+        finally:
+            settings.connect_timeout_s = saved
+        self.assertIn("login screen", str(cm.exception))
+        self.assertEqual(self.bridge.killed, [4242])
+        self.assertTrue(self.bridge.stopped)
+
+    def test_dialog_then_desktop_connects(self):
+        bridge = QueueBridge([_dialog_frame(), _passing_frame()])
+        t = FreeRDPTransport(bridge=bridge)
+        t._poll_s = 0.05
+        t.connect(**_creds())
+        self.assertTrue(t.is_connected)
+
+    def test_mostly_black_frame_fails_the_bar(self):
+        self.bridge.frame = _mostly_black_frame()
+        self.t._poll_s = 0.05
+        saved = settings.connect_timeout_s
+        settings.connect_timeout_s = 0.3
+        try:
+            with self.assertRaises(RuntimeError):
+                self.t.connect(**_creds())
+        finally:
+            settings.connect_timeout_s = saved
 
 
 class TestFreeRDPClick(unittest.TestCase):

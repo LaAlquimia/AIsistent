@@ -3,8 +3,13 @@
 The standard FreeRDP client renders the session into an Xvfb
 display owned by the display bridge; capture and input go
 through that display (FREERDP-TRANSPORT-PLAN.md). Credentials
-reach the client on its stdin (/from-stdin, slice 0 answer) —
-never in argv, never in the child's environment.
+reach the client as the /p argument — the plan's O1 fallback,
+taken after the /from-stdin route was measured not to deliver
+(change 13): with stdin feeding, xfreerdp reached the server's
+login screen but never filled it. The exposure is the proof's
+(process listing, localhost, disposable account), accepted in
+the plan for the trial and flagged for revisit before any
+non-trial use. Never in the child's environment, never logged.
 """
 
 import base64
@@ -15,26 +20,12 @@ from io import BytesIO
 from ..config import settings
 from .base import Transport
 from .display_bridge import XlibDisplayBridge
+from .frame_check import frame_passes as _frame_passes
+from .frame_check import looks_like_login_dialog as _looks_like_login_dialog
 
 logger = logging.getLogger(__name__)
 
 _POLL_S = 1.0
-# The render bar, pre-stated by the FreeRDP proof test: a frame
-# counts as a rendered desktop only past both thresholds. The
-# trial's black frames measured 0-15 non-black pixels / 1 color;
-# the bare desktop measured 12.5% / 400 colors.
-_RENDER_MIN_NONBLACK = 0.05
-_RENDER_MIN_COLORS = 50
-
-
-def _frame_passes(img) -> bool:
-    rgb = img.convert("RGB")
-    total = rgb.width * rgb.height
-    colors = rgb.getcolors(total)
-    if colors is None or len(colors) <= _RENDER_MIN_COLORS:
-        return False
-    nonblack = total - dict(colors).get((0, 0, 0), 0)
-    return nonblack / total > _RENDER_MIN_NONBLACK
 
 
 class FreeRDPTransport(Transport):
@@ -102,7 +93,7 @@ class FreeRDPTransport(Transport):
             "xfreerdp",
             f"/v:{host}:{port}",
             f"/u:{username}",
-            "/from-stdin",
+            f"/p:{cred}",
             "/cert:ignore",
             f"/w:{width}",
             f"/h:{height}",
@@ -123,11 +114,6 @@ class FreeRDPTransport(Transport):
             except Exception:
                 pass
             self._pid = bridge.spawn_client(argv, log_file=log_file)
-            # /from-stdin prompt order (slice 0): username, domain,
-            # password — one line each. The pipe stays open; the
-            # credential is never in argv or the child's env.
-            bridge.write_client_stdin(
-                self._pid, f"{username}\n{domain}\n{cred}\n")
             self._await_render(bridge)
         except Exception:
             self._cleanup()
@@ -140,6 +126,7 @@ class FreeRDPTransport(Transport):
     def _await_render(self, bridge) -> None:
         deadline = time.time() + settings.connect_timeout_s
         focused = False
+        saw_dialog = False
         while time.time() < deadline:
             if not bridge.client_alive(self._pid):
                 raise RuntimeError(
@@ -154,13 +141,26 @@ class FreeRDPTransport(Transport):
                 except Exception:
                     pass  # window not up yet; the render poll waits
             frame = bridge.grab_frame()
-            if _frame_passes(frame):
+            if _looks_like_login_dialog(frame):
+                # The render bar alone cannot tell the server's
+                # login screen from a desktop — the 2026-11-23
+                # acceptance run "connected" onto the login
+                # screen and every later step failed. A connect
+                # counts only once the dialog clears (change 13).
+                saw_dialog = True
+            elif _frame_passes(frame):
                 # Adopt the ACTUAL geometry (plan G10): a
                 # reattached persistent session may differ from
                 # the configured size.
                 self._width, self._height = frame.size
                 return
             time.sleep(self._poll_s)
+        if saw_dialog:
+            raise RuntimeError(
+                "Connect failed: the server is still showing its "
+                "login screen — the credentials were rejected or "
+                "never reached it. No session was started."
+            )
         raise RuntimeError(
             "Connect timed out: no rendered desktop within "
             f"{settings.connect_timeout_s:.0f}s. If the credentials "

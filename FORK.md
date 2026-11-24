@@ -260,6 +260,49 @@ vulnerabilities).
   green locally (the test venv's installed copy was refreshed
   — the stdio protocol test exercises the installed package).
 
+## Change 13 — the credential route reversal + the login-dialog guard (2026-11-23)
+
+- The first live acceptance run (2026-11-23) failed T6/T7b/
+  T8/T10 while T5 "passed" — the bisect (a wrong-password
+  probe through the real server) showed why: /from-stdin
+  feeding never fills the server's login screen. xfreerdp
+  reached the xrdp login dialog with the username pre-filled
+  (from /u) and the password field empty, every time, with
+  the pipe open or closed. Slice 0's S0a conclusion — that
+  stdin feeding delivered the credentials — was a misread:
+  its evidence was a sesman rejection, which an empty
+  submission produces just as well. CORRECTED here.
+- The credential route is now the plan's O1 fallback, the
+  one the FreeRDP proof actually proved: /p in argv. The
+  exposure (process listing, localhost, disposable account)
+  was pre-accepted in the plan for the trial and stays
+  flagged for revisit before any non-trial use. The
+  stdin-writing code and its test are retired.
+- The render bar cannot tell a login screen from a desktop
+  (the login frame passes it: ~100% non-black, 276 colors),
+  so connect() now also refuses the login screen itself:
+  frame_check.looks_like_login_dialog matches the measured
+  signature (uniform backdrop + white dialog box at center)
+  and a connect counts only once the dialog clears; a
+  persistent dialog fails loudly, naming the login screen.
+  Frame checks moved to transport/frame_check.py.
+- Same change, a quieter bug: the render bar's non-black
+  term read PIL's getcolors map backwards (count and color
+  swapped), so it always computed 100% and only the color
+  count was really tested. Fixed via a single _counts
+  helper; a mostly-black frame with >50 colors now fails
+  the bar in tests, as it should. The acceptance harness
+  had the same backwards read in three places (including
+  T10's planted-color oracle, which could never have
+  passed) — fixed there too, and T5 now also requires the
+  session-side truth: an Xvnc process owned by the session
+  user.
+- Tests: the credential test rewritten for the argv route;
+  new dialog tests (a persistent dialog never counts as
+  connected and cleans up; dialog-then-desktop connects);
+  the mostly-black bar test. Suite: 68 tests, green locally
+  and on Yggi.
+
 ## Acceptance tests
 
 `tests/test_trial_trim.py` — click refused by default, click gate opens with
